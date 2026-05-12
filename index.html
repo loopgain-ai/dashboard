@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LoopGain Dashboard</title>
+    <meta
+      name="description"
+      content="Fleet-wide telemetry for LoopGain — Barkhausen stability monitor for AI agent loops."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+    <script
+      src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
+      crossorigin="anonymous"
+      defer
+    ></script>
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <h1>LoopGain <span class="brand-sub">dashboard</span></h1>
+      </div>
+      <nav class="header-actions">
+        <span id="connection-status" class="status-pill status-pill-disconnected">
+          disconnected
+        </span>
+        <button id="config-btn" class="btn btn-ghost" type="button">
+          config
+        </button>
+        <button id="refresh-btn" class="btn btn-ghost" type="button">
+          refresh
+        </button>
+      </nav>
+    </header>
+
+    <main id="main" hidden>
+      <!-- KPI strip -->
+      <section class="kpi-strip" aria-label="Summary">
+        <div class="kpi">
+          <span class="kpi-label">Loops (30d)</span>
+          <span class="kpi-value" id="kpi-loops">—</span>
+        </div>
+        <div class="kpi">
+          <span class="kpi-label">Iterations saved</span>
+          <span class="kpi-value" id="kpi-savings">—</span>
+        </div>
+        <div class="kpi">
+          <span class="kpi-label">Rollbacks</span>
+          <span class="kpi-value" id="kpi-rollbacks">—</span>
+        </div>
+        <div class="kpi">
+          <span class="kpi-label">Outcomes</span>
+          <span class="kpi-value kpi-stack" id="kpi-outcomes">—</span>
+        </div>
+      </section>
+
+      <!-- Panel 1: Loop Health Map -->
+      <section class="panel" aria-labelledby="panel-health-title">
+        <header class="panel-header">
+          <h2 id="panel-health-title">Loop Health Map</h2>
+          <p class="panel-sub">
+            Most recent loops, color-coded by outcome. Earliest top-left, most recent bottom-right.
+          </p>
+        </header>
+        <div class="panel-body">
+          <div id="health-grid" class="health-grid" aria-live="polite"></div>
+          <div class="legend">
+            <span class="legend-item legend-converged">
+              <span class="swatch"></span> converged
+            </span>
+            <span class="legend-item legend-stalling">
+              <span class="swatch"></span> high gain (≥ 0.85)
+            </span>
+            <span class="legend-item legend-oscillating">
+              <span class="swatch"></span> oscillating
+            </span>
+            <span class="legend-item legend-diverged">
+              <span class="swatch"></span> diverged
+            </span>
+            <span class="legend-item legend-max">
+              <span class="swatch"></span> max iterations
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Panel 2: Convergence Profiles -->
+      <section class="panel" aria-labelledby="panel-conv-title">
+        <header class="panel-header">
+          <h2 id="panel-conv-title">Convergence Profiles</h2>
+          <p class="panel-sub">
+            Smoothed loop-gain (median Aβ per loop) over time. Drift upward = prompts or models getting harder.
+          </p>
+          <div class="panel-controls">
+            <label class="control">
+              <span>Workload</span>
+              <select id="workload-filter">
+                <option value="">All workloads</option>
+              </select>
+            </label>
+          </div>
+        </header>
+        <div class="panel-body">
+          <div class="chart-container">
+            <canvas id="convergence-chart"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- Panel 3: Waste Report -->
+      <section class="panel" aria-labelledby="panel-waste-title">
+        <header class="panel-header">
+          <h2 id="panel-waste-title">Waste Report</h2>
+          <p class="panel-sub">
+            Iterations saved vs an assumed fixed cap of 10. Multiply by your per-iteration cost for $-value.
+          </p>
+          <div class="panel-controls">
+            <label class="control">
+              <span>Cost per iteration ($)</span>
+              <input
+                type="number"
+                id="cost-input"
+                value="0.05"
+                step="0.01"
+                min="0"
+              />
+            </label>
+          </div>
+        </header>
+        <div class="panel-body">
+          <div class="waste-grid">
+            <div class="waste-card">
+              <span class="waste-label">Iterations saved</span>
+              <span class="waste-value" id="waste-iters">—</span>
+            </div>
+            <div class="waste-card waste-card-emphasis">
+              <span class="waste-label">Estimated savings</span>
+              <span class="waste-value" id="waste-dollars">—</span>
+            </div>
+            <div class="waste-card">
+              <span class="waste-label">Per-loop average</span>
+              <span class="waste-value" id="waste-per-loop">—</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="app-footer">
+        <p>
+          Reading from <code id="endpoint-display">—</code> as
+          <code id="customer-display">—</code>.
+        </p>
+        <p>
+          <a href="https://github.com/loopgain-ai/loopgain">LoopGain library</a>
+          ·
+          <a href="https://github.com/loopgain-ai/telemetry-receiver">
+            self-host the receiver
+          </a>
+          ·
+          <a href="https://github.com/loopgain-ai/dashboard">
+            this dashboard's source
+          </a>
+        </p>
+      </footer>
+    </main>
+
+    <!-- Config / login dialog -->
+    <dialog id="config-dialog">
+      <form id="config-form" method="dialog">
+        <h2>Connect to your telemetry receiver</h2>
+        <p class="dialog-help">
+          The endpoint URL and bearer token were issued to you when you provisioned
+          your customer account on the receiver (or by self-hosting). Stored in
+          your browser's localStorage — never sent anywhere except your endpoint.
+        </p>
+
+        <label class="dialog-field">
+          <span>Endpoint URL</span>
+          <input
+            type="url"
+            name="endpoint"
+            id="endpoint-input"
+            placeholder="https://telemetry.loopgain.ai"
+            required
+          />
+        </label>
+
+        <label class="dialog-field">
+          <span>Bearer token</span>
+          <input
+            type="password"
+            name="token"
+            id="token-input"
+            placeholder="lgk_..."
+            required
+          />
+        </label>
+
+        <div class="dialog-actions">
+          <button type="button" class="btn btn-ghost" id="config-cancel">
+            Cancel
+          </button>
+          <button type="submit" class="btn btn-primary">Connect</button>
+        </div>
+
+        <p id="config-error" class="dialog-error" hidden></p>
+      </form>
+    </dialog>
+
+    <!-- Empty/loading state -->
+    <div id="empty-state" class="empty-state">
+      <div class="empty-state-inner">
+        <h2>Welcome to the LoopGain dashboard.</h2>
+        <p>
+          Paste your endpoint URL and bearer token to view fleet-wide telemetry.
+        </p>
+        <button id="empty-state-connect" class="btn btn-primary" type="button">
+          Connect
+        </button>
+      </div>
+    </div>
+  </body>
+</html>
