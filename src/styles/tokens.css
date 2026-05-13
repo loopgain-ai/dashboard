@@ -1,0 +1,211 @@
+/* Design tokens — colors, type, density, theme overlays.
+ * Ported verbatim from the design-bundle prototype with the band colors,
+ * five operator modes, three palettes, and three chart styles intact.
+ */
+
+:root {
+  --bg-0: #0a0b0d;
+  --bg-1: #111317;
+  --surf-1: #16181d;
+  --surf-2: #1b1e24;
+  --surf-3: #20242c;
+  --border: #23262d;
+  --border-2: #2c313a;
+  --text-1: #e6e8ec;
+  --text-2: #a4a9b4;
+  --text-3: #6b7180;
+  --text-4: #474c58;
+
+  /* Aβ band semantics. The five-band partition of the loop-gain continuum. */
+  --band-fast: #22d3a5;
+  --band-conv: #4ade80;
+  --band-stall: #f5c451;
+  --band-osc: #f97373;
+  --band-div: #e0436b;
+
+  --accent: #7dd3fc;
+  --accent-2: #38bdf8;
+
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+[data-theme="light"] {
+  --bg-0: #f7f8fa;
+  --bg-1: #ffffff;
+  --surf-1: #ffffff;
+  --surf-2: #f2f4f7;
+  --surf-3: #e9ecf2;
+  --border: #e2e5eb;
+  --border-2: #ccd1da;
+  --text-1: #0f1218;
+  --text-2: #4a5060;
+  --text-3: #6f7686;
+  --text-4: #9ca3af;
+  --band-fast: #0fa47a;
+  --band-conv: #16a34a;
+  --band-stall: #d69209;
+  --band-osc: #dc4a4a;
+  --band-div: #ba2553;
+  --accent: #0284c7;
+  --accent-2: #0369a1;
+}
+
+/* ── Operator mode overlays ─────────────────────────────────────────── */
+
+html[data-mode="executive"] {
+  --bg-0: #14171d;
+  --surf-1: #1a1d24;
+}
+html[data-mode="executive"] body {
+  font-size: 14px;
+  line-height: 1.55;
+}
+html[data-mode="executive"] .card {
+  border-radius: 12px;
+}
+html[data-mode="executive"] footer.app-footer {
+  display: none;
+}
+html[data-mode="executive"] .label {
+  font-size: 11.5px;
+  opacity: 0.85;
+}
+
+html[data-mode="incident"] {
+  --bg-0: oklch(13.5% 0.025 15);
+  --bg-1: oklch(15.5% 0.022 15);
+  --surf-1: oklch(17.5% 0.022 15);
+  --surf-2: oklch(20% 0.022 15);
+  --surf-3: oklch(23% 0.025 15);
+  --accent: var(--band-div);
+}
+html[data-mode="incident"] body {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--band-div) 12%, transparent) 0px,
+    transparent 200px
+  );
+}
+html[data-mode="incident"] .pill-osc,
+html[data-mode="incident"] .pill-div {
+  animation: lg-incident-pulse 1.3s ease-in-out infinite;
+}
+@keyframes lg-incident-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--band-div) 35%, transparent);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--band-div) 0%, transparent);
+  }
+}
+
+/* ── Chart style overlays ───────────────────────────────────────────── */
+
+html[data-chart-style="confident"] svg path[stroke]:not([stroke="currentColor"]):not([stroke="none"]) {
+  stroke-width: 2.25;
+}
+html[data-chart-style="confident"] svg rect[fill-opacity] {
+  fill-opacity: 0.55 !important;
+}
+html[data-chart-style="confident"] svg path[fill-opacity] {
+  fill-opacity: 0.28 !important;
+}
+
+html[data-chart-style="phosphor"] {
+  --phosphor: 125, 211, 252;
+}
+html[data-chart-style="phosphor"] svg path[stroke]:not([stroke="currentColor"]):not([stroke="none"]) {
+  stroke-width: 1.5;
+}
+html[data-chart-style="phosphor"] .card svg {
+  filter:
+    drop-shadow(0 0 2px rgba(var(--phosphor), 0.55))
+    drop-shadow(0 0 7px rgba(var(--phosphor), 0.22));
+}
+html[data-chart-style="phosphor"] body {
+  background: radial-gradient(
+    ellipse at 50% 35%,
+    color-mix(in oklab, var(--accent) 4%, var(--bg-0)) 0%,
+    var(--bg-0) 60%
+  );
+}
+html[data-chart-style="phosphor"][data-mode="incident"] {
+  --phosphor: 224, 67, 107;
+}
+
+/* ── Palette overlays ───────────────────────────────────────────────── */
+
+html[data-palette="contrast"] {
+  --band-fast: oklch(82% 0.22 165);
+  --band-conv: oklch(82% 0.22 145);
+  --band-stall: oklch(82% 0.2 90);
+  --band-osc: oklch(72% 0.22 25);
+  --band-div: oklch(64% 0.24 8);
+  --accent: oklch(82% 0.18 230);
+}
+html[data-theme="dark"][data-palette="contrast"] {
+  --text-1: #ffffff;
+  --text-2: #c9cdd7;
+}
+html[data-theme="light"][data-palette="contrast"] {
+  --text-1: #06080d;
+  --text-2: #2a3040;
+  --band-fast: oklch(58% 0.18 165);
+  --band-conv: oklch(56% 0.18 145);
+  --band-stall: oklch(64% 0.18 70);
+  --band-osc: oklch(58% 0.2 25);
+  --band-div: oklch(50% 0.22 8);
+  --accent: oklch(52% 0.18 230);
+}
+
+html[data-palette="mono"] {
+  --band-fast: oklch(78% 0.005 250);
+  --band-conv: oklch(68% 0.005 250);
+  --band-stall: oklch(58% 0.005 250);
+  --band-osc: oklch(48% 0.005 250);
+  --band-div: #e0436b; /* the one band that stays red, so emergencies still pop */
+}
+html[data-theme="light"][data-palette="mono"] {
+  --band-fast: oklch(50% 0.005 250);
+  --band-conv: oklch(40% 0.005 250);
+  --band-stall: oklch(32% 0.005 250);
+  --band-osc: oklch(22% 0.005 250);
+  --band-div: #ba2553;
+}
+
+/* ── Density ────────────────────────────────────────────────────────── */
+
+html[data-density="comfortable"] body {
+  font-size: 14px;
+}
+html[data-density="comfortable"] .card-h {
+  padding: 16px 18px;
+}
+html[data-density="comfortable"] .label {
+  font-size: 11.5px;
+}
+html[data-density="comfortable"] .pill {
+  height: 22px;
+  padding: 0 10px;
+  font-size: 11px;
+}
+html[data-density="comfortable"] .chip {
+  height: 28px;
+  padding: 0 11px;
+  font-size: 12.5px;
+}
+html[data-density="comfortable"] .kbd {
+  min-width: 20px;
+  height: 20px;
+  font-size: 11px;
+}
+html[data-density="comfortable"] aside.app-sidebar nav button {
+  height: 34px !important;
+}
+html[data-density="comfortable"] aside.app-sidebar {
+  width: 244px !important;
+}
