@@ -123,18 +123,10 @@ function OverviewBody({
         }
       />
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(12, minmax(0, 1fr))",
-          gridAutoFlow: "row dense",
-          gap: 16,
-        }}
-      >
+      <div className="overview-grid">
         <div
-          className="card"
+          className="card span-5"
           style={{
-            gridColumn: "span 5",
             padding: 24,
             display: "flex",
             flexDirection: "column",
@@ -146,26 +138,12 @@ function OverviewBody({
               <RingGauge value={abMedian} sub={`across ${total} loop events`} />
             </div>
           </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(5, 1fr)",
-              borderTop: "1px solid var(--border)",
-              paddingTop: 18,
-            }}
-          >
-            {BANDS.map((b, i) => {
+          <div className="band-strip">
+            {BANDS.map((b) => {
               const count = bandCounts[b.id];
               const pct = total > 0 ? (count / total) * 100 : 0;
               return (
-                <div
-                  key={b.id}
-                  style={{
-                    padding: "0 12px",
-                    borderLeft: i === 0 ? "none" : "1px solid var(--border)",
-                    textAlign: "center",
-                  }}
-                >
+                <div key={b.id} className="band-cell">
                   <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}>
                     <span className={`pill pill-${b.cls}`} style={{ fontSize: 9.5 }}>
                       <span className={`dot dot-${b.cls}`} />
@@ -173,13 +151,8 @@ function OverviewBody({
                     </span>
                   </div>
                   <div
-                    className="mono"
-                    style={{
-                      fontSize: 26,
-                      fontWeight: 500,
-                      color: BAND_COLOR[b.id],
-                      letterSpacing: "-0.02em",
-                    }}
+                    className="mono band-cell-num"
+                    style={{ color: BAND_COLOR[b.id] }}
                   >
                     {count}
                   </div>
@@ -196,9 +169,8 @@ function OverviewBody({
         </div>
 
         <div
-          className="card"
+          className="card span-7"
           style={{
-            gridColumn: "span 7",
             padding: 24,
             display: "flex",
             flexDirection: "column",
@@ -279,9 +251,8 @@ function OverviewBody({
         </div>
 
         <div
-          className="card"
+          className="card span-6 kpi-quad"
           style={{
-            gridColumn: "span 6",
             display: "grid",
             gridTemplateColumns: "1fr 1fr",
             gridTemplateRows: "1fr 1fr",
@@ -322,7 +293,7 @@ function OverviewBody({
           ))}
         </div>
 
-        <div className="card" style={{ gridColumn: "span 6", display: "flex", flexDirection: "column" }}>
+        <div className="card span-6" style={{ display: "flex", flexDirection: "column" }}>
           <div className="card-h">
             <h3>Recent runs</h3>
             <span className="mono" style={{ fontSize: 10.5, color: "var(--text-3)" }}>
@@ -338,16 +309,12 @@ function OverviewBody({
             {transitions.map((t, i) => (
               <div
                 key={i}
+                className="recent-row"
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "64px auto minmax(0, 1fr) auto",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: "8px 14px",
                   borderBottom: i < transitions.length - 1 ? "1px solid var(--border)" : "none",
                 }}
               >
-                <div className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>
+                <div className="mono recent-ts" style={{ fontSize: 11, color: "var(--text-3)" }}>
                   {fmtRel(t.ts)}
                 </div>
                 <StatePill band={t.band} size="sm" />
@@ -364,7 +331,7 @@ function OverviewBody({
                 >
                   {t.workloadId}
                 </div>
-                <div className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>
+                <div className="mono recent-iter" style={{ fontSize: 11, color: "var(--text-3)" }}>
                   {t.iterations} iter
                 </div>
               </div>
@@ -401,9 +368,8 @@ function OverviewBody({
               key={i}
               type="button"
               onClick={() => setRoute(c.route)}
-              className="card"
+              className="card span-4"
               style={{
-                gridColumn: "span 4",
                 padding: 16,
                 textAlign: "left",
                 display: "flex",

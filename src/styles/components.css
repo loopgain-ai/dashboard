@@ -101,6 +101,9 @@
   border-radius: 8px;
   position: relative;
   min-width: 0;
+  /* Lets nested elements respond to the card's own width via container queries. */
+  container-type: inline-size;
+  container-name: card;
 }
 
 .card-h {
@@ -170,6 +173,85 @@
   font-weight: 500;
   color: var(--text-2);
   background: var(--surf-2);
+}
+
+/* ── Overview grid (responsive 12-col → stacked) ────────────────────── */
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-flow: row dense;
+  gap: 16px;
+}
+.overview-grid > .span-5 { grid-column: span 5; }
+.overview-grid > .span-7 { grid-column: span 7; }
+.overview-grid > .span-6 { grid-column: span 6; }
+.overview-grid > .span-4 { grid-column: span 4; }
+
+/* Below ~1100px viewport the asymmetric layout gets too cramped — collapse
+ * everything to full-width single-column. Each card then has the whole
+ * content area to itself and inner content has room to breathe. */
+@media (max-width: 1100px) {
+  .overview-grid > .span-5,
+  .overview-grid > .span-7,
+  .overview-grid > .span-6,
+  .overview-grid > .span-4 { grid-column: span 12; }
+}
+
+/* ── Band-counts strip inside the gauge card (container-query) ──────── */
+.band-strip {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+}
+.band-strip .band-cell {
+  padding: 0 12px;
+  border-left: 1px solid var(--border);
+  text-align: center;
+}
+.band-strip .band-cell:first-child { border-left: none; }
+.band-strip .band-cell-num {
+  font-family: var(--mono);
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+/* At narrow card widths, the 5 large numerics overflow. Compress in stages. */
+@container card (max-width: 460px) {
+  .band-strip .band-cell { padding: 0 6px; }
+  .band-strip .band-cell-num { font-size: 22px; }
+}
+@container card (max-width: 360px) {
+  .band-strip { grid-template-columns: repeat(3, 1fr); row-gap: 14px; }
+  .band-strip .band-cell { border-left: none !important; }
+  .band-strip .band-cell:nth-child(3n+1) { border-left: none !important; }
+  .band-strip .band-cell-num { font-size: 22px; }
+}
+@container card (max-width: 240px) {
+  .band-strip { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ── Recent-runs feed row (compress at narrow widths) ───────────────── */
+.recent-row {
+  display: grid;
+  grid-template-columns: 64px auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+}
+@container card (max-width: 420px) {
+  .recent-row { grid-template-columns: 56px auto minmax(0, 1fr); gap: 8px; }
+  .recent-row > .recent-iter { display: none; }
+}
+@container card (max-width: 320px) {
+  .recent-row { grid-template-columns: auto minmax(0, 1fr); gap: 6px; padding: 8px 12px; }
+  .recent-row > .recent-ts { display: none; }
+}
+
+/* ── KPI quad (responsive font shrinks at narrow widths) ────────────── */
+@container card (max-width: 480px) {
+  .kpi-quad .label { font-size: 10px; }
 }
 
 /* ── Brand lockup (theme-aware) ─────────────────────────────────────── */
