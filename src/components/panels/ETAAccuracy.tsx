@@ -21,16 +21,7 @@ export function ETAAccuracy() {
         }
       />
 
-      <div
-        className="card"
-        style={{
-          padding: 40,
-          display: "grid",
-          gridTemplateColumns: "1.4fr 1fr",
-          gap: 32,
-          alignItems: "start",
-        }}
-      >
+      <div className="card eta-grid" style={{ padding: 40, alignItems: "start" }}>
         <div>
           <div className="label" style={{ marginBottom: 10 }}>
             What this panel will show

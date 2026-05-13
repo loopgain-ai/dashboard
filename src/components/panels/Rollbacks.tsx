@@ -174,9 +174,8 @@ function RollbacksBody({
 
       <div className="card" style={{ overflow: "hidden" }}>
         <div
+          className="rollback-grid"
           style={{
-            display: "grid",
-            gridTemplateColumns: "24px 150px minmax(140px, 1.4fr) 110px 60px 60px 70px 80px",
             padding: "8px 14px",
             borderBottom: "1px solid var(--border)",
             background: "var(--surf-2)",
@@ -189,13 +188,13 @@ function RollbacksBody({
           }}
         >
           <div />
-          <div>timestamp</div>
+          <div className="rb-ts">timestamp</div>
           <div>workload</div>
           <div>trig band</div>
           <div style={{ textAlign: "right" }}>iter</div>
-          <div style={{ textAlign: "right" }}>GM</div>
-          <div style={{ textAlign: "right" }}>Aβ_max</div>
-          <div style={{ textAlign: "right" }}>saved</div>
+          <div className="rb-gm" style={{ textAlign: "right" }}>GM</div>
+          <div className="rb-abmax" style={{ textAlign: "right" }}>Aβ_max</div>
+          <div className="rb-saved" style={{ textAlign: "right" }}>saved</div>
         </div>
 
         <div style={{ maxHeight: "60vh", overflow: "auto" }}>
@@ -210,10 +209,9 @@ function RollbacksBody({
             return (
               <div key={i} style={{ borderBottom: "1px solid var(--border)" }}>
                 <div
+                  className="rollback-grid"
                   onClick={() => toggle(i)}
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "24px 150px minmax(140px, 1.4fr) 110px 60px 60px 70px 80px",
                     padding: "6px 14px",
                     alignItems: "center",
                     cursor: "pointer",
@@ -229,7 +227,7 @@ function RollbacksBody({
                   >
                     <Icon.Chevron />
                   </div>
-                  <div className="mono" style={{ fontSize: 11, color: "var(--text-2)" }}>
+                  <div className="mono rb-ts" style={{ fontSize: 11, color: "var(--text-2)" }}>
                     {fmtAbsTs(r.timestamp_hour)}
                   </div>
                   <div
@@ -252,7 +250,7 @@ function RollbacksBody({
                     {r.iterations_used}
                   </div>
                   <div
-                    className="mono"
+                    className="mono rb-gm"
                     style={{
                       textAlign: "right",
                       fontSize: 12,
@@ -266,10 +264,10 @@ function RollbacksBody({
                   >
                     {r.gain_margin != null ? r.gain_margin.toFixed(2) : "—"}
                   </div>
-                  <div className="mono" style={{ textAlign: "right", fontSize: 12, color: "var(--text-1)" }}>
+                  <div className="mono rb-abmax" style={{ textAlign: "right", fontSize: 12, color: "var(--text-1)" }}>
                     {r.profile_max != null ? r.profile_max.toFixed(3) : "—"}
                   </div>
-                  <div className="mono" style={{ textAlign: "right", fontSize: 12, color: "var(--band-conv)" }}>
+                  <div className="mono rb-saved" style={{ textAlign: "right", fontSize: 12, color: "var(--band-conv)" }}>
                     {r.savings_vs_fixed_cap != null ? `${fmtInt(r.savings_vs_fixed_cap)} iter` : "—"}
                   </div>
                 </div>

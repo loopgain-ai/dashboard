@@ -161,13 +161,11 @@ export function EmptyState({ openConnect }: Props) {
         </pre>
 
         <div
+          className="install-steps"
           style={{
             marginTop: 20,
             padding: "16px 0 0",
             borderTop: "1px solid var(--border)",
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 24,
             fontSize: 12,
             color: "var(--text-2)",
             lineHeight: 1.55,

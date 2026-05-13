@@ -56,14 +56,7 @@ function GainMarginBody({ events }: { events: ReadonlyArray<LoopEvent> }) {
     <>
       <PanelHeader eyebrow="Panel 04" title="Gain Margin Distribution" />
 
-      <div
-        className="card"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          padding: 0,
-        }}
-      >
+      <div className="card gm-kpi-strip" style={{ padding: 0 }}>
         {[
           {
             label: "Median GM",
@@ -182,13 +175,8 @@ function GainMarginBody({ events }: { events: ReadonlyArray<LoopEvent> }) {
           Interpretation
         </div>
         <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 24,
-            fontSize: 12,
-            color: "var(--text-2)",
-          }}
+          className="gm-interp"
+          style={{ fontSize: 12, color: "var(--text-2)" }}
         >
           <div>
             <div className="mono" style={{ color: "var(--band-osc)", marginBottom: 4 }}>

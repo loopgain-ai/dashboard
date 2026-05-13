@@ -254,6 +254,155 @@
   .kpi-quad .label { font-size: 10px; }
 }
 
+/* Panel-level breakpoints are tied to viewport (the layout class sits on
+ * .card itself, so @container can't fire — that queries an ancestor).
+ * Inner-card rules (.band-strip, .recent-row) stay container-driven.
+ *
+ * Sidebar is ~220px + 48px page padding ≈ 268px chrome, so:
+ *   viewport 1100px → card width ~830px
+ *   viewport  900px → card width ~630px
+ *   viewport  720px → card width ~450px
+ */
+
+/* ── Rollbacks table: hide low-priority cols at narrow widths ───────── */
+.rollback-grid {
+  display: grid;
+  grid-template-columns: 24px 150px minmax(140px, 1.4fr) 110px 60px 60px 70px 80px;
+}
+@media (max-width: 1100px) {
+  .rollback-grid { grid-template-columns: 24px 130px minmax(120px, 1fr) 110px 50px 50px; }
+  .rollback-grid > .rb-abmax,
+  .rollback-grid > .rb-saved { display: none; }
+}
+@media (max-width: 720px) {
+  .rollback-grid { grid-template-columns: 24px minmax(120px, 1fr) 100px 40px; }
+  .rollback-grid > .rb-ts,
+  .rollback-grid > .rb-gm { display: none; }
+}
+
+/* ── Loop Detail KPI strip (5-col) + main grid ─────────────────────── */
+.loop-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+}
+@media (max-width: 1100px) {
+  .loop-kpi-strip { grid-template-columns: repeat(3, 1fr); }
+  .loop-kpi-strip > div { border-left: 1px solid var(--border) !important; }
+  .loop-kpi-strip > div:nth-child(3n+1) { border-left: none !important; }
+}
+@media (max-width: 720px) {
+  .loop-kpi-strip { grid-template-columns: repeat(2, 1fr); }
+  .loop-kpi-strip > div:nth-child(2n+1) { border-left: none !important; }
+}
+
+.loop-main-grid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 16px;
+}
+@media (max-width: 1100px) {
+  .loop-main-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Waste hero (1.1fr 1fr) + breakdowns (2-col) ───────────────────── */
+.waste-hero {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 32px;
+  align-items: stretch;
+}
+@media (max-width: 960px) {
+  .waste-hero { grid-template-columns: 1fr; gap: 18px; }
+  .waste-hero > .waste-hero-right {
+    border-left: none !important;
+    padding-left: 0 !important;
+    border-top: 1px solid var(--border);
+    padding-top: 18px;
+  }
+}
+
+.waste-breakdowns {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-top: 16px;
+}
+@media (max-width: 800px) {
+  .waste-breakdowns { grid-template-columns: 1fr; }
+}
+
+/* ── Gain Margin: 4-col KPI + 3-col interpretation ─────────────────── */
+.gm-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+}
+@media (max-width: 960px) {
+  .gm-kpi-strip { grid-template-columns: repeat(2, 1fr); }
+  .gm-kpi-strip > div { border-left: 1px solid var(--border) !important; }
+  .gm-kpi-strip > div:nth-child(2n+1) { border-left: none !important; }
+}
+@media (max-width: 600px) {
+  .gm-kpi-strip { grid-template-columns: 1fr; }
+  .gm-kpi-strip > div { border-left: none !important; border-top: 1px solid var(--border) !important; }
+  .gm-kpi-strip > div:first-child { border-top: none !important; }
+}
+
+.gm-interp {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+@media (max-width: 960px) {
+  .gm-interp { grid-template-columns: 1fr; gap: 16px; }
+}
+
+/* ── ETA 2-col (1.6fr 1fr) ─────────────────────────────────────────── */
+.eta-grid {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 32px;
+}
+@media (max-width: 960px) {
+  .eta-grid { grid-template-columns: 1fr; gap: 18px; }
+}
+
+/* ── Empty state install steps (3-col) ─────────────────────────────── */
+.install-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+@media (max-width: 800px) {
+  .install-steps { grid-template-columns: 1fr; gap: 16px; }
+}
+
+/* ── Settings alert rules row ──────────────────────────────────────── */
+.rule-row {
+  display: grid;
+  grid-template-columns: 50px 1.4fr 100px 1.4fr 50px;
+}
+@media (max-width: 960px) {
+  .rule-row { grid-template-columns: 50px 1fr 50px; }
+  .rule-row > .rule-within { display: none; }
+  .rule-row > .rule-then {
+    grid-column: 2 / 3;
+    margin-top: 4px;
+    color: var(--accent);
+    font-size: 11px;
+  }
+  .rule-row > .rule-when {
+    grid-column: 2 / 3;
+  }
+}
+
+/* ── TopBar: hide search-text + reduce time-range padding at narrow ─ */
+@media (max-width: 900px) {
+  .top-search-label { display: none; }
+}
+@media (max-width: 760px) {
+  .top-range-pill { padding: 0 6px !important; font-size: 10.5px !important; }
+}
+
 /* ── Brand lockup (theme-aware) ─────────────────────────────────────── */
 .app-brand .brand-light { display: none; }
 .app-brand .brand-dark { display: block; }

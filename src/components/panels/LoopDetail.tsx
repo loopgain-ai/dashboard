@@ -120,13 +120,8 @@ function LoopDetailBody({
       </div>
 
       <div
-        className="card"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(5, 1fr)",
-          padding: 0,
-          marginBottom: 16,
-        }}
+        className="card loop-kpi-strip"
+        style={{ padding: 0, marginBottom: 16 }}
       >
         {[
           {
@@ -166,7 +161,7 @@ function LoopDetailBody({
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 16 }}>
+      <div className="loop-main-grid">
         <div className="card" style={{ padding: 16 }}>
           <div
             style={{

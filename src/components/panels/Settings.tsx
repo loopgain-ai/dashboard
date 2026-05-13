@@ -192,9 +192,8 @@ export function Settings({ costPerIter, setCostPerIter }: Props) {
           Rules persist locally so they can be reviewed and ported when delivery ships in v0.2.
         </div>
         <div
+          className="rule-row"
           style={{
-            display: "grid",
-            gridTemplateColumns: "50px 1.4fr 100px 1.4fr 50px",
             padding: "8px 14px",
             borderBottom: "1px solid var(--border)",
             background: "var(--surf-2)",
@@ -207,17 +206,16 @@ export function Settings({ costPerIter, setCostPerIter }: Props) {
           }}
         >
           <div>on</div>
-          <div>when</div>
-          <div>within</div>
-          <div>then</div>
+          <div className="rule-when">when</div>
+          <div className="rule-within">within</div>
+          <div className="rule-then">then</div>
           <div></div>
         </div>
         {rules.map((r) => (
           <div
             key={r.id}
+            className="rule-row"
             style={{
-              display: "grid",
-              gridTemplateColumns: "50px 1.4fr 100px 1.4fr 50px",
               padding: "10px 14px",
               alignItems: "center",
               borderBottom: "1px solid var(--border)",
@@ -252,6 +250,7 @@ export function Settings({ costPerIter, setCostPerIter }: Props) {
             </div>
             <input
               type="text"
+              className="rule-when"
               value={r.when}
               onChange={(e) =>
                 setRules((rs) =>
@@ -262,6 +261,7 @@ export function Settings({ costPerIter, setCostPerIter }: Props) {
             />
             <input
               type="text"
+              className="rule-within"
               value={r.within}
               onChange={(e) =>
                 setRules((rs) =>
@@ -272,6 +272,7 @@ export function Settings({ costPerIter, setCostPerIter }: Props) {
             />
             <input
               type="text"
+              className="rule-then"
               value={r.action}
               onChange={(e) =>
                 setRules((rs) =>

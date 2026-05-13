@@ -178,16 +178,7 @@ function WasteBody({
         }
       />
 
-      <div
-        className="card"
-        style={{
-          padding: 28,
-          display: "grid",
-          gridTemplateColumns: "1.1fr 1fr",
-          gap: 32,
-          alignItems: "stretch",
-        }}
-      >
+      <div className="card waste-hero" style={{ padding: 28 }}>
         <div>
           <div className="label">Saved by LoopGain · 30d</div>
           <div
@@ -234,6 +225,7 @@ function WasteBody({
         </div>
 
         <div
+          className="waste-hero-right"
           style={{
             borderLeft: "1px solid var(--border)",
             paddingLeft: 32,
@@ -282,14 +274,7 @@ function WasteBody({
         </div>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(2, 1fr)",
-          gap: 16,
-          marginTop: 16,
-        }}
-      >
+      <div className="waste-breakdowns">
         {[
           { title: "By workload", rows: byWorkload },
           { title: "By outcome", rows: byOutcome },

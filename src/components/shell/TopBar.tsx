@@ -105,6 +105,7 @@ export function TopBar({
           <button
             key={r}
             type="button"
+            className="top-range-pill"
             onClick={() => setTimeRange(r)}
             style={{
               height: 26,
@@ -159,6 +160,7 @@ export function TopBar({
       >
         <Icon.Search />
         <span
+          className="top-search-label"
           style={{
             overflow: "hidden",
             textOverflow: "ellipsis",
