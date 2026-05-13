@@ -39,16 +39,16 @@ export function Sidebar({ route, setRoute, collapsed, setCollapsed }: Props) {
               src="/loopgain-mark-dark.svg"
               alt="LoopGain"
               className="brand-dark"
-              width={26}
-              height={26}
+              width={39}
+              height={39}
               style={{}}
             />
             <img
               src="/loopgain-mark-light.svg"
               alt="LoopGain"
               className="brand-light"
-              width={26}
-              height={26}
+              width={39}
+              height={39}
               style={{}}
             />
           </>
@@ -58,13 +58,13 @@ export function Sidebar({ route, setRoute, collapsed, setCollapsed }: Props) {
               src="/loopgain-lockup-dark.png"
               alt="LoopGain"
               className="brand-dark"
-              style={{ height: 24, width: "auto" }}
+              style={{ height: 36, width: "auto" }}
             />
             <img
               src="/loopgain-lockup-light.png"
               alt="LoopGain"
               className="brand-light"
-              style={{ height: 24, width: "auto" }}
+              style={{ height: 36, width: "auto" }}
             />
           </>
         )}
