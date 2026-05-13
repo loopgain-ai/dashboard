@@ -16,12 +16,13 @@ import type { Band, LoopEvent } from "../../types";
 interface Props {
   setRoute: (r: RouteId) => void;
   pollMs?: number;
+  sinceHours?: number;
 }
 
 type SizeBy = "throughput" | "savings";
 
-export function HealthMap({ setRoute, pollMs }: Props) {
-  const events = useEvents({ pollMs });
+export function HealthMap({ setRoute, pollMs, sinceHours }: Props) {
+  const events = useEvents({ pollMs, sinceHours });
   const stats = useStats({ pollMs });
   return (
     <div style={{ padding: 24 }}>

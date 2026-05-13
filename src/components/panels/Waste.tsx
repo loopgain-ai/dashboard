@@ -17,11 +17,12 @@ interface Props {
   costPerIter: number;
   setCostPerIter: (n: number) => void;
   pollMs?: number;
+  sinceHours?: number;
 }
 
-export function Waste({ costPerIter, setCostPerIter, pollMs }: Props) {
+export function Waste({ costPerIter, setCostPerIter, pollMs, sinceHours }: Props) {
   const stats = useStats({ pollMs });
-  const events = useEvents({ pollMs });
+  const events = useEvents({ pollMs, sinceHours });
   return (
     <div style={{ padding: 24 }}>
       <Loaded state={stats.state}>

@@ -14,12 +14,13 @@ import type { Band, LoopEvent, Outcome } from "../../types";
 
 interface Props {
   pollMs?: number;
+  sinceHours?: number;
 }
 
 const TRIG_BANDS: ReadonlyArray<Band> = ["STALLING", "OSCILLATING", "DIVERGING"];
 
-export function Rollbacks({ pollMs }: Props) {
-  const events = useEvents({ rollbacksOnly: true, pollMs });
+export function Rollbacks({ pollMs, sinceHours }: Props) {
+  const events = useEvents({ rollbacksOnly: true, pollMs, sinceHours });
   const stats = useStats({ pollMs });
   return (
     <div style={{ padding: 24 }}>

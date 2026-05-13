@@ -159,17 +159,32 @@ function AppInner() {
     }
     switch (route) {
       case "overview":
-        return <Overview setRoute={setRoute} costPerIter={costPerIter} pollMs={pollMs} />;
+        return (
+          <Overview
+            setRoute={setRoute}
+            costPerIter={costPerIter}
+            pollMs={pollMs}
+            sinceHours={sinceHours}
+            timeRange={timeRange}
+          />
+        );
       case "health-map":
-        return <HealthMap setRoute={setRoute} pollMs={pollMs} />;
+        return <HealthMap setRoute={setRoute} pollMs={pollMs} sinceHours={sinceHours} />;
       case "convergence":
         return <Convergence pollMs={pollMs} sinceHours={sinceHours} />;
       case "waste":
-        return <Waste costPerIter={costPerIter} setCostPerIter={setCostPerIter} pollMs={pollMs} />;
+        return (
+          <Waste
+            costPerIter={costPerIter}
+            setCostPerIter={setCostPerIter}
+            pollMs={pollMs}
+            sinceHours={sinceHours}
+          />
+        );
       case "gain-margin":
-        return <GainMargin pollMs={pollMs} />;
+        return <GainMargin pollMs={pollMs} sinceHours={sinceHours} />;
       case "rollbacks":
-        return <Rollbacks pollMs={pollMs} />;
+        return <Rollbacks pollMs={pollMs} sinceHours={sinceHours} />;
       case "eta":
         return <ETAAccuracy />;
       case "settings":
@@ -177,9 +192,17 @@ function AppInner() {
       case "empty":
         return <EmptyState openConnect={() => setConnectOpen(true)} />;
       default:
-        return <Overview setRoute={setRoute} costPerIter={costPerIter} pollMs={pollMs} />;
+        return (
+          <Overview
+            setRoute={setRoute}
+            costPerIter={costPerIter}
+            pollMs={pollMs}
+            sinceHours={sinceHours}
+            timeRange={timeRange}
+          />
+        );
     }
-  }, [isAuthed, route, costPerIter, pollMs, sinceHours]);
+  }, [isAuthed, route, costPerIter, pollMs, sinceHours, timeRange]);
 
   return (
     <div style={{ display: "flex", height: "100vh", background: "var(--bg-0)" }}>

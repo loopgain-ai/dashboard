@@ -64,7 +64,7 @@ export function useProfiles(
 }
 
 export function useEvents(
-  opts: { rollbacksOnly?: boolean; pollMs?: number } = {},
+  opts: { rollbacksOnly?: boolean; sinceHours?: number; pollMs?: number } = {},
 ): { state: LoadState<EventsResponse>; refresh: () => void } {
   const { demo } = useAuth();
   const { state, refresh } = useApi<EventsResponse>(
@@ -80,8 +80,24 @@ export function useEvents(
     }),
     [opts.rollbacksOnly],
   );
-  if (demo) return { state: demoState, refresh };
-  return { state, refresh };
+  const base = demo ? demoState : state;
+  // The receiver doesn't accept a `since_hours` param on /v1/events, so we
+  // apply the time-range filter client-side using `timestamp_hour`.
+  const filtered = useMemo<LoadState<EventsResponse>>(() => {
+    if (opts.sinceHours == null) return base;
+    const since = Math.floor(Date.now() / 1000) - opts.sinceHours * 3600;
+    const apply = (d: EventsResponse): EventsResponse => ({
+      ...d,
+      events: d.events.filter((e) => e.timestamp_hour >= since),
+    });
+    if (base.status === "ok") return { ...base, data: apply(base.data) };
+    if (base.status === "loading" && base.previous)
+      return { ...base, previous: apply(base.previous) };
+    if (base.status === "error" && base.previous)
+      return { ...base, previous: apply(base.previous) };
+    return base;
+  }, [base, opts.sinceHours]);
+  return { state: filtered, refresh };
 }
 
 export function useCalibration(

@@ -15,10 +15,11 @@ import type { LoopEvent } from "../../types";
 
 interface Props {
   pollMs?: number;
+  sinceHours?: number;
 }
 
-export function GainMargin({ pollMs }: Props) {
-  const events = useEvents({ pollMs });
+export function GainMargin({ pollMs, sinceHours }: Props) {
+  const events = useEvents({ pollMs, sinceHours });
   return (
     <div style={{ padding: 24 }}>
       <Loaded state={events.state}>

@@ -8,18 +8,20 @@ import { median, percentile } from "../../lib/stats";
 import { Chip, Icon, KPI, PanelHeader, StatePill } from "../primitives";
 import { RingGauge, Sparkline } from "../charts";
 import { Loaded } from "./PanelState";
-import type { RouteId } from "../shell";
+import type { RouteId, TimeRange } from "../shell";
 import type { Band, LoopEvent, StatsResponse } from "../../types";
 
 interface Props {
   setRoute: (r: RouteId) => void;
   costPerIter: number;
   pollMs?: number;
+  sinceHours?: number;
+  timeRange: TimeRange;
 }
 
-export function Overview({ setRoute, costPerIter, pollMs }: Props) {
+export function Overview({ setRoute, costPerIter, pollMs, sinceHours, timeRange }: Props) {
   const stats = useStats({ pollMs });
-  const events = useEvents({ pollMs });
+  const events = useEvents({ pollMs, sinceHours });
   return (
     <div style={{ padding: 24, maxWidth: 1400, margin: "0 auto" }}>
       <Loaded state={events.state}>
@@ -32,6 +34,7 @@ export function Overview({ setRoute, costPerIter, pollMs }: Props) {
                 setRoute={setRoute}
                 costPerIter={costPerIter}
                 isStale={isStale}
+                timeRange={timeRange}
               />
             )}
           </Loaded>
@@ -47,12 +50,14 @@ function OverviewBody({
   setRoute,
   costPerIter,
   isStale,
+  timeRange,
 }: {
   stats: StatsResponse;
   events: ReadonlyArray<LoopEvent>;
   setRoute: (r: RouteId) => void;
   costPerIter: number;
   isStale: boolean;
+  timeRange: TimeRange;
 }) {
   const bands = useMemo(() => events.map((e) => bandFromEvent(e)), [events]);
   const bandCounts = useMemo(() => {
@@ -112,7 +117,11 @@ function OverviewBody({
   return (
     <>
       <PanelHeader
-        eyebrow={isStale ? "Fleet · 30d (refreshing…)" : "Fleet · 30d"}
+        eyebrow={
+          isStale
+            ? `Fleet · ${timeRange} (refreshing…)`
+            : `Fleet · ${timeRange}`
+        }
         title="Overview"
         right={
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
