@@ -15,10 +15,12 @@ import {
   useState,
 } from "react";
 import type {
+  CalibrationResponse,
   Config,
   EventsResponse,
   HealthResponse,
   ProfilesResponse,
+  RotateTokenResponse,
   StatsResponse,
 } from "../types";
 
@@ -140,6 +142,41 @@ export function getEvents(
   );
 }
 
+export function getCalibration(
+  c: Config,
+  opts: { workloadId?: string; sinceHours?: number } = {},
+  signal?: AbortSignal,
+): Promise<CalibrationResponse> {
+  return apiGet<CalibrationResponse>(
+    c.endpoint,
+    c.token,
+    "/v1/calibration",
+    { workload_id: opts.workloadId, since_hours: opts.sinceHours },
+    signal,
+  );
+}
+
+export async function rotateToken(c: Config): Promise<RotateTokenResponse> {
+  const url = buildUrl(c.endpoint, "/v1/token/rotate");
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${c.token}` },
+  });
+  if (!resp.ok) {
+    let body = "";
+    try {
+      body = await resp.text();
+    } catch {
+      /* noop */
+    }
+    throw new ApiError(
+      resp.status,
+      `HTTP ${resp.status} on /v1/token/rotate${body ? `: ${body}` : ""}`,
+    );
+  }
+  return (await resp.json()) as RotateTokenResponse;
+}
+
 // ── Auth context ──────────────────────────────────────────────────────
 
 export type ConnectionState =
@@ -156,6 +193,13 @@ export interface AuthCtx {
   connect: (c: Config) => Promise<void>;
   disconnect: () => void;
   ping: () => void;
+  /**
+   * Rotate the current bearer token. On success: returns the new plain token
+   * (shown ONCE to the user) and atomically updates the saved config so all
+   * subsequent requests use it. Throws on failure; the existing token stays
+   * active in that case.
+   */
+  rotate: () => Promise<RotateTokenResponse>;
 }
 
 export const AuthContext = createContext<AuthCtx | null>(null);
@@ -283,13 +327,25 @@ export function useAuthProvider(): AuthCtx {
       });
   }, [config]);
 
+  const rotate = useCallback(async (): Promise<RotateTokenResponse> => {
+    if (!config) throw new Error("not connected");
+    const resp = await rotateToken(config);
+    // Persist the new token immediately. The server already invalidated the
+    // old hash; if we don't save here, the user is locked out.
+    const next: Config = { endpoint: config.endpoint, token: resp.token };
+    saveConfig(next);
+    setConfig(next);
+    setConnection({ status: "connected", customerId: resp.customer_id });
+    return resp;
+  }, [config]);
+
   const setDemo = useCallback((on: boolean) => {
     setDemoFlag(on);
     setDemoState(on);
   }, []);
 
   return useMemo(
-    () => ({ config, demo, setDemo, connection, connect, disconnect, ping }),
-    [config, demo, setDemo, connection, connect, disconnect, ping],
+    () => ({ config, demo, setDemo, connection, connect, disconnect, ping, rotate }),
+    [config, demo, setDemo, connection, connect, disconnect, ping, rotate],
   );
 }

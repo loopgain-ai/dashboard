@@ -3,6 +3,7 @@
 
 import { useMemo } from "react";
 import {
+  getCalibration,
   getEvents,
   getProfiles,
   getStats,
@@ -10,8 +11,13 @@ import {
   useAuth,
   type LoadState,
 } from "./api";
-import { demoEvents, demoProfiles, demoStats } from "./demo";
-import type { EventsResponse, ProfilesResponse, StatsResponse } from "../types";
+import { demoCalibration, demoEvents, demoProfiles, demoStats } from "./demo";
+import type {
+  CalibrationResponse,
+  EventsResponse,
+  ProfilesResponse,
+  StatsResponse,
+} from "../types";
 
 const NOW = () => Date.now();
 
@@ -73,6 +79,34 @@ export function useEvents(
       loadedAt: NOW(),
     }),
     [opts.rollbacksOnly],
+  );
+  if (demo) return { state: demoState, refresh };
+  return { state, refresh };
+}
+
+export function useCalibration(
+  opts: { workloadId?: string; sinceHours?: number; pollMs?: number } = {},
+): { state: LoadState<CalibrationResponse>; refresh: () => void } {
+  const { demo } = useAuth();
+  const { state, refresh } = useApi<CalibrationResponse>(
+    demo
+      ? null
+      : (c, signal) =>
+          getCalibration(
+            c,
+            { workloadId: opts.workloadId, sinceHours: opts.sinceHours },
+            signal,
+          ),
+    [opts.workloadId, opts.sinceHours],
+    { pollMs: opts.pollMs },
+  );
+  const demoState = useMemo<LoadState<CalibrationResponse>>(
+    () => ({
+      status: "ok",
+      data: demoCalibration({ workloadId: opts.workloadId, sinceHours: opts.sinceHours }),
+      loadedAt: NOW(),
+    }),
+    [opts.workloadId, opts.sinceHours],
   );
   if (demo) return { state: demoState, refresh };
   return { state, refresh };

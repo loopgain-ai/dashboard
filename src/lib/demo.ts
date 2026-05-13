@@ -5,6 +5,7 @@
 // data layer in either mode.
 
 import type {
+  CalibrationResponse,
   EventsResponse,
   LoopEvent,
   Outcome,
@@ -62,7 +63,29 @@ interface SyntheticEvent extends ProfileEvent, Omit<LoopEvent, "workload_id"> {
   library_version: string;
   savings_vs_fixed_cap: number;
   rollback_triggered: boolean;
+  first_eta_prediction: number | null;
+  first_eta_at_iteration: number | null;
 }
+
+// Per-workload calibration bias for the demo fleet. Most workloads have
+// near-zero bias (the prediction is well-calibrated); a couple are
+// deliberately skewed to give the ETA Accuracy panel something to surface.
+// Bias is added to the predicted *total* — positive = optimistic predictions
+// (we said 5 iters, actually took 7), negative = pessimistic.
+const WORKLOAD_BIAS: Record<string, number> = {
+  "rag-rewrite-A": 0,
+  "rag-rewrite-B": 0,
+  "sql-synth-prod": -1,
+  "code-rewrite-eu": 0,
+  "plan-critic-v3": 2, // optimistic; the calibration story for this workload
+  "summarize-eval": 0,
+  "unit-test-fix": 0,
+  "spec-refine-v2": -2, // pessimistic
+  "extract-validate": 0,
+  "translate-grade-jp": 1,
+  "agent-self-review": 0,
+  "tilescope-rewrite": 0,
+};
 
 function buildFleet(): SyntheticEvent[] {
   const rng = makeRand(SEED);
@@ -117,6 +140,21 @@ function buildFleet(): SyntheticEvent[] {
     }
     const savings = Math.max(0, 16 - iters);
     const rollback = outcome === "diverged" || (outcome === "oscillating" && rng() < 0.6);
+
+    // Only converged loops carry a captured eta snapshot. Predicted total
+    // = at_iteration + remaining; should match iterations_used plus the
+    // per-workload bias and a small per-event jitter.
+    let firstEta: number | null = null;
+    let firstEtaAt: number | null = null;
+    if (outcome === "converged" && iters >= 3) {
+      const atIter = 2;
+      const bias = WORKLOAD_BIAS[workload] ?? 0;
+      const jitter = Math.round((rng() - 0.5) * 2); // -1, 0, or +1
+      const predictedTotal = Math.max(atIter + 1, iters + bias + jitter);
+      firstEta = predictedTotal - atIter;
+      firstEtaAt = atIter;
+    }
+
     events.push({
       timestamp_hour: ts,
       workload_id: workload,
@@ -130,6 +168,8 @@ function buildFleet(): SyntheticEvent[] {
       savings_vs_fixed_cap: savings,
       rollback_triggered: rollback,
       library_version: "0.1.0",
+      first_eta_prediction: firstEta,
+      first_eta_at_iteration: firstEtaAt,
     });
   }
   events.sort((a, b) => b.timestamp_hour - a.timestamp_hour);
@@ -205,6 +245,36 @@ export function demoEvents(opts: { rollbacksOnly?: boolean } = {}): EventsRespon
       gain_margin: e.gain_margin,
       profile_max: e.profile_max,
       savings_vs_fixed_cap: e.savings_vs_fixed_cap,
+      library_version: e.library_version,
+      first_eta_prediction: e.first_eta_prediction,
+      first_eta_at_iteration: e.first_eta_at_iteration,
+    })),
+  };
+}
+
+export function demoCalibration(
+  opts: { workloadId?: string; sinceHours?: number } = {},
+): CalibrationResponse {
+  const since =
+    Math.floor(Date.now() / 1000) - (opts.sinceHours ?? 30 * 24) * 3600;
+  let evs = fleet().filter(
+    (e) =>
+      e.outcome === "converged" &&
+      e.first_eta_prediction !== null &&
+      e.first_eta_at_iteration !== null &&
+      e.timestamp_hour >= since,
+  );
+  if (opts.workloadId) evs = evs.filter((e) => e.workload_id === opts.workloadId);
+  return {
+    customer_id: "demo-customer",
+    workload_id: opts.workloadId ?? null,
+    events: evs.slice(0, 1000).map((e) => ({
+      timestamp_hour: e.timestamp_hour,
+      workload_id: e.workload_id,
+      iterations_used: e.iterations_used,
+      first_eta_prediction: e.first_eta_prediction!,
+      first_eta_at_iteration: e.first_eta_at_iteration!,
+      gain_margin: e.gain_margin,
       library_version: e.library_version,
     })),
   };

@@ -366,6 +366,33 @@
   .eta-grid { grid-template-columns: 1fr; gap: 18px; }
 }
 
+/* ── ETA KPI strip (4 cells) — mirrors gm-kpi-strip ────────────────── */
+.eta-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+}
+@media (max-width: 960px) {
+  .eta-kpi-strip { grid-template-columns: repeat(2, 1fr); }
+  .eta-kpi-strip > div { border-left: 1px solid var(--border) !important; }
+  .eta-kpi-strip > div:nth-child(2n+1) { border-left: none !important; }
+}
+@media (max-width: 600px) {
+  .eta-kpi-strip { grid-template-columns: 1fr; }
+  .eta-kpi-strip > div { border-left: none !important; border-top: 1px solid var(--border) !important; }
+  .eta-kpi-strip > div:first-child { border-top: none !important; }
+}
+
+/* ── ETA bottom row: bias bars + interpretation ────────────────────── */
+.eta-bottom-grid {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+@media (max-width: 960px) {
+  .eta-bottom-grid { grid-template-columns: 1fr; }
+}
+
 /* ── Empty state install steps (3-col) ─────────────────────────────── */
 .install-steps {
   display: grid;

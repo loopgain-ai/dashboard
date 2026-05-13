@@ -7,8 +7,60 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../lib/api";
 import { Chip, Icon, PanelHeader } from "../primitives";
+import { fmtAbsTsExact } from "../../lib/format";
 
 const RULES_KEY = "loopgain-dashboard-alert-rules";
+const PRESET_KEY = "loopgain-dashboard-cost-preset";
+const IN_TOKENS_KEY = "loopgain-dashboard-cost-in-tokens";
+const OUT_TOKENS_KEY = "loopgain-dashboard-cost-out-tokens";
+
+// Model pricing reference table. Rates are $ per million tokens (input / output).
+// Pricing last verified against public Anthropic, OpenAI, and Google pricing
+// pages on 2026-05-13. Re-verify before pilot conversations — public list
+// pricing shifts, and enterprise contracts may differ.
+type ModelPresetId =
+  | "claude-opus-4-7"
+  | "claude-sonnet-4-6"
+  | "claude-haiku-4-5"
+  | "gpt-4o"
+  | "gpt-4o-mini"
+  | "gemini-2-5-pro"
+  | "custom";
+
+interface ModelPreset {
+  id: ModelPresetId;
+  label: string;
+  inputRate: number | null;
+  outputRate: number | null;
+}
+
+const PRESETS: ModelPreset[] = [
+  { id: "claude-opus-4-7", label: "Claude Opus 4.7", inputRate: 15, outputRate: 75 },
+  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", inputRate: 3, outputRate: 15 },
+  { id: "claude-haiku-4-5", label: "Claude Haiku 4.5", inputRate: 1, outputRate: 5 },
+  { id: "gpt-4o", label: "GPT-4o", inputRate: 2.5, outputRate: 10 },
+  { id: "gpt-4o-mini", label: "GPT-4o-mini", inputRate: 0.15, outputRate: 0.6 },
+  { id: "gemini-2-5-pro", label: "Gemini 2.5 Pro", inputRate: 1.25, outputRate: 10 },
+  { id: "custom", label: "Custom (enter $/iter manually)", inputRate: null, outputRate: null },
+];
+
+const DEFAULT_IN_TOKENS = 5000;
+const DEFAULT_OUT_TOKENS = 500;
+
+function loadPreset(): ModelPresetId {
+  const v = localStorage.getItem(PRESET_KEY);
+  return PRESETS.some((p) => p.id === v) ? (v as ModelPresetId) : "claude-sonnet-4-6";
+}
+
+function loadTokens(key: string, fallback: number): number {
+  const v = Number(localStorage.getItem(key));
+  return Number.isFinite(v) && v > 0 ? v : fallback;
+}
+
+function computeCost(p: ModelPreset, inTok: number, outTok: number): number {
+  if (p.inputRate == null || p.outputRate == null) return 0;
+  return (inTok / 1_000_000) * p.inputRate + (outTok / 1_000_000) * p.outputRate;
+}
 
 interface Rule {
   id: number;
@@ -138,34 +190,11 @@ export function Settings({ costPerIter, setCostPerIter }: Props) {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 16, padding: 18 }}>
-        <div className="label" style={{ marginBottom: 10 }}>
-          Cost per iteration ($)
-        </div>
-        <p style={{ fontSize: 12, color: "var(--text-3)", lineHeight: 1.5, marginTop: 0 }}>
-          Used to convert iteration-count savings into dollar amounts on the Waste Report.
-          A typical mid-tier frontier-model loop iteration costs $0.03–$0.10.
-        </p>
-        <input
-          type="number"
-          value={costPerIter}
-          step="0.01"
-          min="0"
-          onChange={(e) => setCostPerIter(Number(e.target.value) || 0)}
-          style={{
-            width: 120,
-            height: 32,
-            background: "var(--surf-2)",
-            border: "1px solid var(--border)",
-            borderRadius: 5,
-            padding: "0 10px",
-            fontSize: 13,
-            fontFamily: "var(--mono)",
-            color: "var(--text-1)",
-            outline: "none",
-          }}
-        />
-      </div>
+      {!demo && (
+        <RotateTokenCard connected={connection.status === "connected"} />
+      )}
+
+      <CostPerIterCard costPerIter={costPerIter} setCostPerIter={setCostPerIter} />
 
       <div className="card">
         <div className="card-h">
@@ -312,3 +341,440 @@ const inputStyle: React.CSSProperties = {
   minWidth: 0,
   width: "100%",
 };
+
+// ── Cost per iteration ────────────────────────────────────────────────
+
+const boxedInputStyle: React.CSSProperties = {
+  height: 32,
+  background: "var(--surf-2)",
+  border: "1px solid var(--border)",
+  borderRadius: 5,
+  padding: "0 10px",
+  fontSize: 13,
+  fontFamily: "var(--mono)",
+  color: "var(--text-1)",
+  outline: "none",
+};
+
+function CostPerIterCard({
+  costPerIter,
+  setCostPerIter,
+}: {
+  costPerIter: number;
+  setCostPerIter: (n: number) => void;
+}) {
+  const [presetId, setPresetId] = useState<ModelPresetId>(() => loadPreset());
+  const [inTokens, setInTokens] = useState<number>(() =>
+    loadTokens(IN_TOKENS_KEY, DEFAULT_IN_TOKENS),
+  );
+  const [outTokens, setOutTokens] = useState<number>(() =>
+    loadTokens(OUT_TOKENS_KEY, DEFAULT_OUT_TOKENS),
+  );
+
+  const preset = PRESETS.find((p) => p.id === presetId) ?? PRESETS[0]!;
+  const isCustom = preset.inputRate == null;
+
+  // Sync computed cost to App's costPerIter on mount and whenever inputs change.
+  // App.tsx persists the resulting number to its own key, so Overview/Waste pick
+  // up the calibrated value even if they mount before Settings.
+  useEffect(() => {
+    localStorage.setItem(PRESET_KEY, presetId);
+    if (!isCustom) {
+      setCostPerIter(computeCost(preset, inTokens, outTokens));
+    }
+    // setCostPerIter is a parent-defined function with an unstable identity;
+    // omitted from deps to avoid re-firing on unrelated parent renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetId, inTokens, outTokens]);
+
+  useEffect(() => {
+    localStorage.setItem(IN_TOKENS_KEY, String(inTokens));
+  }, [inTokens]);
+
+  useEffect(() => {
+    localStorage.setItem(OUT_TOKENS_KEY, String(outTokens));
+  }, [outTokens]);
+
+  return (
+    <div className="card" style={{ marginBottom: 16, padding: 18 }}>
+      <div className="label" style={{ marginBottom: 10 }}>
+        Cost per iteration
+      </div>
+      <p style={{ fontSize: 12, color: "var(--text-3)", lineHeight: 1.5, marginTop: 0, marginBottom: 14 }}>
+        Used to convert iteration-count savings into dollar amounts on the Waste
+        Report. Pick the model your loops use and we'll estimate the per-iteration
+        cost from public pricing — telemetry doesn't carry model or token info, so
+        this is a workload-level estimate.
+      </p>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "auto 1fr",
+          gap: "10px 14px",
+          alignItems: "center",
+          maxWidth: 560,
+        }}
+      >
+        <div className="label">Model</div>
+        <select
+          value={presetId}
+          onChange={(e) => setPresetId(e.target.value as ModelPresetId)}
+          style={{ ...boxedInputStyle, width: "100%", fontFamily: "inherit", cursor: "pointer" }}
+        >
+          {PRESETS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+
+        {isCustom ? (
+          <>
+            <div className="label">$ per iter</div>
+            <input
+              type="number"
+              value={costPerIter}
+              step="0.01"
+              min="0"
+              onChange={(e) => setCostPerIter(Number(e.target.value) || 0)}
+              style={{ ...boxedInputStyle, width: 120 }}
+            />
+          </>
+        ) : (
+          <>
+            <div className="label">Estimated</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+              <span
+                className="mono"
+                style={{ fontSize: 16, color: "var(--text-1)", letterSpacing: "-0.01em" }}
+              >
+                ${costPerIter.toFixed(4)}
+              </span>
+              <span className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>
+                per iter
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+
+      {!isCustom && (
+        <details style={{ marginTop: 14 }}>
+          <summary
+            style={{
+              cursor: "pointer",
+              userSelect: "none",
+              fontSize: 12,
+              color: "var(--text-2)",
+              padding: "4px 0",
+            }}
+          >
+            Adjust token estimates
+          </summary>
+          <div
+            style={{
+              marginTop: 10,
+              padding: 12,
+              background: "var(--surf-2)",
+              border: "1px solid var(--border)",
+              borderRadius: 5,
+              display: "grid",
+              gridTemplateColumns: "auto 110px 1fr",
+              gap: "10px 12px",
+              alignItems: "center",
+              maxWidth: 560,
+            }}
+          >
+            <div className="label">Input tokens / iter</div>
+            <input
+              type="number"
+              value={inTokens}
+              min="0"
+              step="100"
+              onChange={(e) => setInTokens(Math.max(0, Number(e.target.value) || 0))}
+              style={{ ...boxedInputStyle, width: "100%" }}
+            />
+            <div className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>
+              × ${preset.inputRate}/M = ${((inTokens / 1_000_000) * (preset.inputRate ?? 0)).toFixed(4)}
+            </div>
+            <div className="label">Output tokens / iter</div>
+            <input
+              type="number"
+              value={outTokens}
+              min="0"
+              step="50"
+              onChange={(e) => setOutTokens(Math.max(0, Number(e.target.value) || 0))}
+              style={{ ...boxedInputStyle, width: "100%" }}
+            />
+            <div className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>
+              × ${preset.outputRate}/M = ${((outTokens / 1_000_000) * (preset.outputRate ?? 0)).toFixed(4)}
+            </div>
+          </div>
+          <p style={{ fontSize: 11, color: "var(--text-3)", lineHeight: 1.5, margin: "10px 0 0" }}>
+            Defaults ({DEFAULT_IN_TOKENS} in / {DEFAULT_OUT_TOKENS} out) are rough
+            order-of-magnitude estimates. Token volume is the dominant cost driver — set
+            these from a sample of real iterations for a credible Waste Report.
+          </p>
+        </details>
+      )}
+    </div>
+  );
+}
+
+// ── Rotate token ──────────────────────────────────────────────────────
+
+type RotateState =
+  | { kind: "idle" }
+  | { kind: "confirming" }
+  | { kind: "rotating" }
+  | { kind: "success"; token: string; rotatedAt: number }
+  | { kind: "error"; message: string };
+
+function RotateTokenCard({ connected }: { connected: boolean }) {
+  const { rotate } = useAuth();
+  const [state, setState] = useState<RotateState>({ kind: "idle" });
+  const [copied, setCopied] = useState(false);
+
+  async function performRotate(): Promise<void> {
+    setState({ kind: "rotating" });
+    try {
+      const resp = await rotate();
+      setState({ kind: "success", token: resp.token, rotatedAt: resp.rotated_at });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setState({ kind: "error", message });
+    }
+  }
+
+  async function copyToken(token: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(token);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* clipboard may fail in iframes; user can copy the visible text */
+    }
+  }
+
+  function dismissSuccess(): void {
+    setState({ kind: "idle" });
+    setCopied(false);
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: 16, padding: 18 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          marginBottom: 8,
+        }}
+      >
+        <div className="label">Bearer token</div>
+        {state.kind === "idle" && (
+          <Chip
+            on={false}
+            onClick={() => setState({ kind: "confirming" })}
+            disabled={!connected}
+          >
+            Rotate token
+          </Chip>
+        )}
+      </div>
+
+      {state.kind === "idle" && (
+        <p style={{ fontSize: 12, color: "var(--text-3)", lineHeight: 1.5, margin: 0 }}>
+          Generate a fresh bearer token. The current token is revoked
+          immediately; any other client (Python library, CI, second browser) using
+          it must be updated to keep sending telemetry.
+          {!connected && (
+            <>
+              {" "}
+              <span className="mono" style={{ color: "var(--band-stall)" }}>
+                Connect first to rotate.
+              </span>
+            </>
+          )}
+        </p>
+      )}
+
+      {state.kind === "confirming" && (
+        <ConfirmBlock onCancel={() => setState({ kind: "idle" })} onConfirm={performRotate} />
+      )}
+
+      {state.kind === "rotating" && (
+        <div
+          className="mono"
+          style={{ fontSize: 12, color: "var(--text-3)", padding: "8px 0" }}
+        >
+          Rotating…
+        </div>
+      )}
+
+      {state.kind === "success" && (
+        <SuccessBlock
+          token={state.token}
+          rotatedAt={state.rotatedAt}
+          copied={copied}
+          onCopy={() => copyToken(state.token)}
+          onDismiss={dismissSuccess}
+        />
+      )}
+
+      {state.kind === "error" && (
+        <ErrorBlock
+          message={state.message}
+          onRetry={performRotate}
+          onCancel={() => setState({ kind: "idle" })}
+        />
+      )}
+    </div>
+  );
+}
+
+function ConfirmBlock({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      style={{
+        padding: 12,
+        background: "color-mix(in oklab, var(--band-osc) 8%, transparent)",
+        border: "1px solid color-mix(in oklab, var(--band-osc) 30%, transparent)",
+        borderRadius: 5,
+        fontSize: 12.5,
+        color: "var(--text-2)",
+        lineHeight: 1.55,
+      }}
+    >
+      <div className="mono" style={{ color: "var(--band-osc)", marginBottom: 6 }}>
+        confirm rotation
+      </div>
+      <ul style={{ margin: "6px 0 12px 18px", padding: 0 }}>
+        <li>The current token stops working the instant this completes.</li>
+        <li>The new token is shown <strong>once</strong>; copy it before dismissing.</li>
+        <li>This browser's config will be updated automatically.</li>
+        <li>Other clients (Python library, CI, etc.) must be reconfigured with the new token.</li>
+      </ul>
+      <div style={{ display: "flex", gap: 8 }}>
+        <Chip onClick={onConfirm}>Yes, rotate now</Chip>
+        <Chip onClick={onCancel}>Cancel</Chip>
+      </div>
+    </div>
+  );
+}
+
+function SuccessBlock({
+  token,
+  rotatedAt,
+  copied,
+  onCopy,
+  onDismiss,
+}: {
+  token: string;
+  rotatedAt: number;
+  copied: boolean;
+  onCopy: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      style={{
+        padding: 12,
+        background: "color-mix(in oklab, var(--band-conv) 8%, transparent)",
+        border: "1px solid color-mix(in oklab, var(--band-conv) 35%, transparent)",
+        borderRadius: 5,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          marginBottom: 8,
+        }}
+      >
+        <div className="mono" style={{ color: "var(--band-conv)", fontSize: 12 }}>
+          rotated · shown once
+        </div>
+        <div className="mono" style={{ color: "var(--text-3)", fontSize: 10.5 }}>
+          {fmtAbsTsExact(rotatedAt)}
+        </div>
+      </div>
+      <div
+        className="mono"
+        style={{
+          padding: "10px 12px",
+          background: "var(--surf-2)",
+          border: "1px solid var(--border)",
+          borderRadius: 5,
+          fontSize: 12,
+          color: "var(--text-1)",
+          wordBreak: "break-all",
+          userSelect: "all",
+        }}
+      >
+        {token}
+      </div>
+      <div
+        style={{
+          marginTop: 10,
+          fontSize: 11.5,
+          color: "var(--text-3)",
+          lineHeight: 1.5,
+        }}
+      >
+        This browser is already using the new token. Update other clients that
+        share this account before they next make a request.
+      </div>
+      <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+        <Chip onClick={onCopy}>{copied ? "Copied" : "Copy token"}</Chip>
+        <Chip onClick={onDismiss}>Done — hide token</Chip>
+      </div>
+    </div>
+  );
+}
+
+function ErrorBlock({
+  message,
+  onRetry,
+  onCancel,
+}: {
+  message: string;
+  onRetry: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      style={{
+        padding: 12,
+        background: "color-mix(in oklab, var(--band-osc) 8%, transparent)",
+        border: "1px solid color-mix(in oklab, var(--band-osc) 30%, transparent)",
+        borderRadius: 5,
+        fontSize: 12.5,
+        color: "var(--text-2)",
+      }}
+    >
+      <div className="mono" style={{ color: "var(--band-osc)", marginBottom: 6 }}>
+        rotation failed
+      </div>
+      <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)", marginBottom: 10 }}>
+        {message}
+      </div>
+      <div style={{ fontSize: 11.5, color: "var(--text-3)", marginBottom: 10 }}>
+        Your current token is still active. Retry, or cancel and try again later.
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <Chip onClick={onRetry}>Retry</Chip>
+        <Chip onClick={onCancel}>Cancel</Chip>
+      </div>
+    </div>
+  );
+}

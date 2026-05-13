@@ -63,12 +63,42 @@ export interface LoopEvent {
   profile_max: number | null;
   savings_vs_fixed_cap: number | null;
   library_version: string;
+  // Schema v2: first non-NULL eta snapshot captured during the loop, plus
+  // the iteration count when it was captured. Both NULL on v1-era events
+  // or when the library never produced a prediction.
+  first_eta_prediction?: number | null;
+  first_eta_at_iteration?: number | null;
 }
 
 /** GET /v1/events response. */
 export interface EventsResponse {
   customer_id: string;
   events: LoopEvent[];
+}
+
+/** One row from GET /v1/calibration: a converged loop with a captured eta. */
+export interface CalibrationEvent {
+  timestamp_hour: number;
+  workload_id: string | null;
+  iterations_used: number;
+  first_eta_prediction: number;
+  first_eta_at_iteration: number;
+  gain_margin: number | null;
+  library_version: string;
+}
+
+/** GET /v1/calibration response. */
+export interface CalibrationResponse {
+  customer_id: string;
+  workload_id: string | null;
+  events: CalibrationEvent[];
+}
+
+/** POST /v1/token/rotate response. The plain token is shown ONCE. */
+export interface RotateTokenResponse {
+  customer_id: string;
+  token: string;
+  rotated_at: number;
 }
 
 /** GET /health response. */

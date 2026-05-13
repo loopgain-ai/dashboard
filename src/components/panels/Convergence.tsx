@@ -205,7 +205,7 @@ function ConvergenceBody({
         <div style={{ padding: "4px 0" }}>
           {[
             { id: "FAST_CONVERGE" as const, range: "Aβ < 0.30", desc: "Strong contraction. Halt early if budget-bound." },
-            { id: "CONVERGING" as const, range: "0.30 ≤ Aβ < 0.85", desc: "Healthy verify-revise. Continue." },
+            { id: "CONVERGING" as const, range: "0.30 ≤ Aβ < 0.85", desc: "Healthy convergence. Continue." },
             { id: "STALLING" as const, range: "0.85 ≤ Aβ < 0.95", desc: "Marginal returns. Inspect critic prompt." },
             { id: "OSCILLATING" as const, range: "0.95 ≤ Aβ < 1.05", desc: "No net error reduction. Rollback armed." },
             { id: "DIVERGING" as const, range: "Aβ ≥ 1.05", desc: "Error growing. Roll back to best-so-far." },

@@ -363,11 +363,19 @@ function OverviewBody({
           },
         ].map((c, i) => {
           const IconComp = Icon[c.icon];
+          const go = () => setRoute(c.route);
           return (
-            <button
+            <div
               key={i}
-              type="button"
-              onClick={() => setRoute(c.route)}
+              role="button"
+              tabIndex={0}
+              onClick={go}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  go();
+                }
+              }}
               className="card span-4"
               style={{
                 padding: 16,
@@ -401,7 +409,7 @@ function OverviewBody({
                 )}
               </div>
               <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{c.desc}</div>
-            </button>
+            </div>
           );
         })}
       </div>
