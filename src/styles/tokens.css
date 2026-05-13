@@ -23,8 +23,10 @@
   --band-osc: #f97373;
   --band-div: #e0436b;
 
-  --accent: #7dd3fc;
-  --accent-2: #38bdf8;
+  /* Brand amber. Same hue as the "Gain" in the wordmark + the STALLING
+   * band — visual reuse is intentional. See ADR/journal 2026-05-13. */
+  --accent: #f5c451;
+  --accent-2: #d69209;
 
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
@@ -47,8 +49,8 @@
   --band-stall: #d69209;
   --band-osc: #dc4a4a;
   --band-div: #ba2553;
-  --accent: #0284c7;
-  --accent-2: #0369a1;
+  --accent: #c8830c;
+  --accent-2: #8b5a06;
 }
 
 /* ── Operator mode overlays ─────────────────────────────────────────── */
@@ -116,7 +118,7 @@ html[data-chart-style="confident"] svg path[fill-opacity] {
 }
 
 html[data-chart-style="phosphor"] {
-  --phosphor: 125, 211, 252;
+  --phosphor: 245, 196, 81;
 }
 html[data-chart-style="phosphor"] svg path[stroke]:not([stroke="currentColor"]):not([stroke="none"]) {
   stroke-width: 1.5;
@@ -145,7 +147,7 @@ html[data-palette="contrast"] {
   --band-stall: oklch(82% 0.2 90);
   --band-osc: oklch(72% 0.22 25);
   --band-div: oklch(64% 0.24 8);
-  --accent: oklch(82% 0.18 230);
+  --accent: oklch(82% 0.16 85);
 }
 html[data-theme="dark"][data-palette="contrast"] {
   --text-1: #ffffff;
@@ -159,7 +161,7 @@ html[data-theme="light"][data-palette="contrast"] {
   --band-stall: oklch(64% 0.18 70);
   --band-osc: oklch(58% 0.2 25);
   --band-div: oklch(50% 0.22 8);
-  --accent: oklch(52% 0.18 230);
+  --accent: oklch(60% 0.17 75);
 }
 
 html[data-palette="mono"] {
