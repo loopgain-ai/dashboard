@@ -10,7 +10,17 @@ Three panels in v0.1:
 
 Plus a KPI strip (30-day totals: loops, iterations saved, rollbacks, outcome breakdown).
 
-Future panels (Gain Margin Distribution, Rollback Log detail, ETA Accuracy) are deferred to v0.2 — see the [LoopGain product spec](https://github.com/loopgain-ai/loopgain/blob/main/README.md) for the full six-panel design.
+Future panels (Gain Margin Distribution, Rollback Log, ETA Accuracy) are deferred to v0.2.
+
+---
+
+## Access
+
+The dashboard codebase is Apache-2.0 — anyone can self-host the full stack (this dashboard + the [telemetry-receiver](https://github.com/loopgain-ai/telemetry-receiver)) on their own infrastructure with no permission needed.
+
+To use the hosted instance at `dashboard.loopgain.ai`, you need a bearer token issued from the receiver. During the v0.1 alpha, tokens are issued manually — get in touch if you want one. A self-serve sign-up flow with tiered access (free / Team / Enterprise) is planned for v0.2+.
+
+In all cases, the dashboard is fully client-side: your token lives in `localStorage` and is sent only to the configured endpoint. Nothing is shared between accounts.
 
 ---
 
