@@ -1,0 +1,208 @@
+/* Reusable component classes — pills, chips, cards, KPIs, kbd hints. */
+
+/* ── State pill (5-band) ───────────────────────────────────────────── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.pill .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.pill-fast {
+  color: var(--band-fast);
+  background: color-mix(in oklab, var(--band-fast) 12%, transparent);
+  border-color: color-mix(in oklab, var(--band-fast) 25%, transparent);
+}
+.pill-conv {
+  color: var(--band-conv);
+  background: color-mix(in oklab, var(--band-conv) 12%, transparent);
+  border-color: color-mix(in oklab, var(--band-conv) 25%, transparent);
+}
+.pill-stall {
+  color: var(--band-stall);
+  background: color-mix(in oklab, var(--band-stall) 14%, transparent);
+  border-color: color-mix(in oklab, var(--band-stall) 28%, transparent);
+}
+.pill-osc {
+  color: var(--band-osc);
+  background: color-mix(in oklab, var(--band-osc) 14%, transparent);
+  border-color: color-mix(in oklab, var(--band-osc) 28%, transparent);
+}
+.pill-div {
+  color: var(--band-div);
+  background: color-mix(in oklab, var(--band-div) 16%, transparent);
+  border-color: color-mix(in oklab, var(--band-div) 30%, transparent);
+}
+.pill .dot-fast {
+  background: var(--band-fast);
+}
+.pill .dot-conv {
+  background: var(--band-conv);
+}
+.pill .dot-stall {
+  background: var(--band-stall);
+}
+.pill .dot-osc {
+  background: var(--band-osc);
+}
+.pill .dot-div {
+  background: var(--band-div);
+}
+
+/* ── Chip ──────────────────────────────────────────────────────────── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  color: var(--text-2);
+  background: var(--surf-2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+  white-space: nowrap;
+}
+.chip:hover {
+  color: var(--text-1);
+  border-color: var(--border-2);
+}
+.chip.on {
+  color: var(--text-1);
+  background: var(--surf-3);
+  border-color: var(--border-2);
+}
+
+/* ── Card ──────────────────────────────────────────────────────────── */
+.card {
+  background: var(--surf-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  position: relative;
+  min-width: 0;
+}
+
+.card-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.card-h h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-2);
+  text-transform: uppercase;
+}
+
+/* ── Numerics & labels ─────────────────────────────────────────────── */
+.num-xl {
+  font-family: var(--mono);
+  font-size: 44px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--text-1);
+}
+.num-lg {
+  font-family: var(--mono);
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text-1);
+}
+.num-md {
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text-1);
+}
+.num-sm {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-1);
+}
+.label {
+  font-size: 11px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+}
+
+/* ── Keyboard hint ─────────────────────────────────────────────────── */
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--border-2);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-2);
+  background: var(--surf-2);
+}
+
+/* ── Brand lockup (theme-aware) ─────────────────────────────────────── */
+.app-brand .brand-light { display: none; }
+.app-brand .brand-dark { display: block; }
+[data-theme="light"] .app-brand .brand-dark { display: none; }
+[data-theme="light"] .app-brand .brand-light { display: block; }
+
+/* ── Form fields used by ConnectDialog & Settings ──────────────────── */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field > span {
+  font-size: 11px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.field input,
+.field select {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--surf-2);
+  color: var(--text-1);
+  font-size: 12.5px;
+  outline: none;
+}
+.field input:focus,
+.field select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 25%, transparent);
+}

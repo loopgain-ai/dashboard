@@ -1,0 +1,146 @@
+/* Resets, body, scrollbar, base interactive elements. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-0);
+  color: var(--text-1);
+  font-family: var(--sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings:
+    "ss01",
+    "cv11";
+}
+
+body {
+  overflow: hidden;
+  height: 100vh;
+}
+
+#root {
+  height: 100vh;
+}
+
+.mono {
+  font-family: var(--mono);
+  font-feature-settings:
+    "zero",
+    "ss01";
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+button {
+  font-family: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+dialog {
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+
+dialog::backdrop {
+  background: color-mix(in oklab, var(--bg-0) 70%, transparent);
+  backdrop-filter: blur(4px);
+}
+
+/* ── Animation primitives ───────────────────────────────────────────── */
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 211, 165, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(34, 211, 165, 0);
+  }
+}
+.pulse-glow {
+  animation: pulse-glow 1.8s ease-out infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: spin 1.2s linear infinite;
+}
+
+/* ── Light theme polish ─────────────────────────────────────────────── */
+
+[data-theme="light"] body {
+  background: radial-gradient(
+    ellipse 80% 60% at 50% 0%,
+    #eef1f6 0%,
+    var(--bg-0) 50%
+  );
+}
+[data-theme="light"] .card {
+  box-shadow: 0 1px 0 0 rgba(15, 18, 24, 0.025);
+}
+[data-theme="light"] .pill {
+  background-color: color-mix(in oklab, currentColor 8%, transparent) !important;
+  border-color: color-mix(in oklab, currentColor 22%, transparent) !important;
+}
+[data-theme="light"] .lg-health-tile {
+  fill-opacity: 0.82 !important;
+}
+[data-theme="light"] .lg-health-tile:hover {
+  fill-opacity: 0.95 !important;
+}
