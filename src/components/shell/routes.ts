@@ -18,6 +18,7 @@ export type RouteId =
   | "gain-margin"
   | "rollbacks"
   | "eta"
+  | "alerts"
   | "settings"
   | "empty"
   | `loop:${string}`;
@@ -30,6 +31,7 @@ export const NAV: ReadonlyArray<NavItem> = [
   { id: "gain-margin", label: "Gain Margin", icon: "Bars", kbd: "g m" },
   { id: "rollbacks", label: "Rollbacks", icon: "Undo", kbd: "g r" },
   { id: "eta", label: "ETA Accuracy", icon: "Clock", kbd: "g e" },
+  { id: "alerts", label: "Alerts", icon: "Bolt", kbd: "g a" },
 ];
 
 export function isLoopRoute(r: string): r is `loop:${string}` {

@@ -1,14 +1,25 @@
-// Settings panel — connection info, alert-rule editor (persisted locally),
-// cost-per-iteration default.
-//
-// Honest scope: alert delivery isn't wired up server-side yet, so rules
-// persist to localStorage only and the panel labels that fact clearly.
+// Settings panel — connection info, alert-rule editor (server-backed via
+// the receiver's /v1/alerts/rules CRUD endpoints), cost-per-iteration
+// default. The cron evaluator on the receiver fires webhook deliveries
+// every minute against any rule whose predicate matches.
 
-import { useEffect, useState } from "react";
-import { useAuth } from "../../lib/api";
+import { useEffect, useMemo, useState } from "react";
+import {
+  createAlertRule,
+  deleteAlertRule,
+  updateAlertRule,
+  useAuth,
+} from "../../lib/api";
+import { useAlertRules } from "../../lib/data-hooks";
 import { Chip, Icon, PanelHeader } from "../primitives";
+import type {
+  AlertOperator,
+  AlertPredicate,
+  AlertRule,
+  AlertRulePayload,
+  Outcome,
+} from "../../types";
 
-const RULES_KEY = "loopgain-dashboard-alert-rules";
 const PRESET_KEY = "loopgain-dashboard-cost-preset";
 const IN_TOKENS_KEY = "loopgain-dashboard-cost-in-tokens";
 const OUT_TOKENS_KEY = "loopgain-dashboard-cost-out-tokens";
@@ -61,53 +72,6 @@ function computeCost(p: ModelPreset, inTok: number, outTok: number): number {
   return (inTok / 1_000_000) * p.inputRate + (outTok / 1_000_000) * p.outputRate;
 }
 
-interface Rule {
-  id: number;
-  on: boolean;
-  when: string;
-  within: string;
-  action: string;
-}
-
-const DEFAULT_RULES: Rule[] = [
-  {
-    id: 1,
-    on: true,
-    when: "cluster of DIVERGING > 3",
-    within: "5min",
-    action: 'pagerduty.page("oncall-mlops")',
-  },
-  {
-    id: 2,
-    on: true,
-    when: "any loop GM < 1.0",
-    within: "—",
-    action: 'slack.post("#alerts-mlops")',
-  },
-  {
-    id: 3,
-    on: false,
-    when: "rollback-rate > 12%",
-    within: "24h",
-    action: 'linear.create_issue("loopgain")',
-  },
-];
-
-function loadRules(): Rule[] {
-  try {
-    const raw = localStorage.getItem(RULES_KEY);
-    if (!raw) return DEFAULT_RULES;
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as Rule[]) : DEFAULT_RULES;
-  } catch {
-    return DEFAULT_RULES;
-  }
-}
-
-function saveRules(rules: Rule[]): void {
-  localStorage.setItem(RULES_KEY, JSON.stringify(rules));
-}
-
 interface Props {
   costPerIter: number;
   setCostPerIter: (n: number) => void;
@@ -115,27 +79,6 @@ interface Props {
 
 export function Settings({ costPerIter, setCostPerIter }: Props) {
   const { config, demo, connection, disconnect } = useAuth();
-  const [rules, setRules] = useState<Rule[]>(() => loadRules());
-
-  useEffect(() => {
-    saveRules(rules);
-  }, [rules]);
-
-  function toggle(id: number): void {
-    setRules((rs) => rs.map((r) => (r.id === id ? { ...r, on: !r.on } : r)));
-  }
-
-  function remove(id: number): void {
-    setRules((rs) => rs.filter((r) => r.id !== id));
-  }
-
-  function addRule(): void {
-    const id = (rules.reduce((m, r) => Math.max(m, r.id), 0) + 1) || 1;
-    setRules((rs) => [
-      ...rs,
-      { id, on: true, when: "new rule", within: "—", action: 'slack.post("#general")' },
-    ]);
-  }
 
   return (
     <div style={{ padding: 24, maxWidth: 1100 }}>
@@ -193,13 +136,150 @@ export function Settings({ costPerIter, setCostPerIter }: Props) {
 
       <CostPerIterCard costPerIter={costPerIter} setCostPerIter={setCostPerIter} />
 
-      <div className="card">
-        <div className="card-h">
-          <h3>Alert rules · {rules.filter((r) => r.on).length} active</h3>
-          <Chip onClick={addRule}>
-            <Icon.Bolt /> New rule
-          </Chip>
-        </div>
+      <AlertRulesCard />
+    </div>
+  );
+}
+
+// ── Alert rules editor ────────────────────────────────────────────────
+
+const inputStyle: React.CSSProperties = {
+  background: "var(--surf-2)",
+  border: "1px solid var(--border)",
+  borderRadius: 4,
+  padding: "4px 8px",
+  fontSize: 12,
+  fontFamily: "var(--mono)",
+  color: "var(--text-1)",
+  outline: "none",
+  minWidth: 0,
+  height: 28,
+};
+
+const OUTCOMES: ReadonlyArray<Outcome> = [
+  "converged",
+  "oscillating",
+  "diverged",
+  "max_iterations",
+];
+
+const OPERATORS: ReadonlyArray<AlertOperator> = [">", ">=", "<", "<=", "="];
+
+function defaultPredicate(): AlertPredicate {
+  return { metric: "outcome_count", outcome: "diverged", operator: ">", threshold: 3 };
+}
+
+function defaultPayload(): AlertRulePayload {
+  return {
+    name: "New rule",
+    enabled: true,
+    predicate: defaultPredicate(),
+    filter: null,
+    window_seconds: 300,
+    cooldown_seconds: 600,
+    action_type: "webhook",
+    action_url: "",
+  };
+}
+
+function ruleToPayload(r: AlertRule): AlertRulePayload {
+  return {
+    name: r.name,
+    enabled: r.enabled,
+    predicate: r.predicate,
+    filter: r.filter,
+    window_seconds: r.window_seconds,
+    cooldown_seconds: r.cooldown_seconds,
+    action_type: r.action_type,
+    action_url: r.action_url,
+  };
+}
+
+function AlertRulesCard() {
+  const { config, demo } = useAuth();
+  const { state, refresh } = useAlertRules();
+  const [editingId, setEditingId] = useState<number | "new" | null>(null);
+  const [draft, setDraft] = useState<AlertRulePayload>(() => defaultPayload());
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const rules = useMemo(() => {
+    if (state.status === "ok") return state.data.rules;
+    if (state.status === "loading" && state.previous) return state.previous.rules;
+    if (state.status === "error" && state.previous) return state.previous.rules;
+    return [];
+  }, [state]);
+
+  function startNew() {
+    setDraft(defaultPayload());
+    setEditingId("new");
+    setError(null);
+  }
+
+  function startEdit(r: AlertRule) {
+    setDraft(ruleToPayload(r));
+    setEditingId(r.id);
+    setError(null);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setError(null);
+  }
+
+  async function save() {
+    if (!config && !demo) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      if (demo) {
+        // Demo mode is read-only; pretend success and refresh.
+        await new Promise((r) => setTimeout(r, 200));
+      } else if (editingId === "new") {
+        await createAlertRule(config!, draft);
+      } else if (typeof editingId === "number") {
+        await updateAlertRule(config!, editingId, draft);
+      }
+      setEditingId(null);
+      refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function remove(id: number) {
+    if (!config || demo) return;
+    if (!window.confirm("Delete this rule?")) return;
+    try {
+      await deleteAlertRule(config, id);
+      refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function toggleEnabled(r: AlertRule) {
+    if (!config || demo) return;
+    try {
+      await updateAlertRule(config, r.id, { ...ruleToPayload(r), enabled: !r.enabled });
+      refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  return (
+    <div className="card">
+      <div className="card-h">
+        <h3>Alert rules · {rules.filter((r) => r.enabled).length} active</h3>
+        <Chip onClick={startNew}>
+          <Icon.Bolt /> New rule
+        </Chip>
+      </div>
+
+      {demo && (
         <div
           style={{
             padding: "10px 14px",
@@ -212,132 +292,477 @@ export function Settings({ costPerIter, setCostPerIter }: Props) {
           }}
         >
           <span className="mono" style={{ color: "var(--band-stall)" }}>
-            note
+            demo mode
           </span>{" "}
-          · alert delivery (Slack / PagerDuty / Linear) is not yet wired up on the receiver.
-          Rules persist locally so they can be reviewed and ported when delivery ships in v0.2.
+          · rules are read-only. Connect a real receiver to create, edit, and
+          deliver alerts.
         </div>
+      )}
+
+      {error && (
         <div
-          className="rule-row"
           style={{
-            padding: "8px 14px",
-            borderBottom: "1px solid var(--border)",
-            background: "var(--surf-2)",
-            fontSize: 10.5,
+            padding: "10px 14px",
+            margin: 14,
+            background: "color-mix(in oklab, var(--band-osc) 10%, transparent)",
+            border: "1px solid color-mix(in oklab, var(--band-osc) 30%, transparent)",
+            borderRadius: 5,
+            fontSize: 11.5,
+            color: "var(--band-osc)",
             fontFamily: "var(--mono)",
-            color: "var(--text-3)",
-            textTransform: "uppercase",
-            letterSpacing: "0.04em",
-            fontWeight: 600,
           }}
         >
-          <div>on</div>
-          <div className="rule-when">when</div>
-          <div className="rule-within">within</div>
-          <div className="rule-then">then</div>
-          <div></div>
+          {error}
         </div>
-        {rules.map((r) => (
-          <div
+      )}
+
+      {rules.length === 0 && editingId !== "new" && (
+        <div style={{ padding: 24, color: "var(--text-3)", fontSize: 12 }}>
+          No rules yet. Click <span className="mono">New rule</span> to add one.
+        </div>
+      )}
+
+      {rules.map((r) =>
+        editingId === r.id ? (
+          <RuleEditor
             key={r.id}
-            className="rule-row"
-            style={{
-              padding: "10px 14px",
-              alignItems: "center",
-              borderBottom: "1px solid var(--border)",
-            }}
+            draft={draft}
+            setDraft={setDraft}
+            onSave={save}
+            onCancel={cancelEdit}
+            submitting={submitting}
+            label="Edit rule"
+          />
+        ) : (
+          <RuleRow
+            key={r.id}
+            r={r}
+            onEdit={() => startEdit(r)}
+            onDelete={() => remove(r.id)}
+            onToggle={() => toggleEnabled(r)}
+            disabled={demo}
+          />
+        ),
+      )}
+
+      {editingId === "new" && (
+        <RuleEditor
+          draft={draft}
+          setDraft={setDraft}
+          onSave={save}
+          onCancel={cancelEdit}
+          submitting={submitting}
+          label="New rule"
+        />
+      )}
+    </div>
+  );
+}
+
+function RuleRow({
+  r,
+  onEdit,
+  onDelete,
+  onToggle,
+  disabled,
+}: {
+  r: AlertRule;
+  onEdit: () => void;
+  onDelete: () => void;
+  onToggle: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <div
+      style={{
+        padding: "12px 14px",
+        borderBottom: "1px solid var(--border)",
+        display: "grid",
+        gridTemplateColumns: "auto 1fr auto auto",
+        gap: 14,
+        alignItems: "center",
+      }}
+    >
+      <button
+        type="button"
+        onClick={disabled ? undefined : onToggle}
+        title={r.enabled ? "Disable" : "Enable"}
+        style={{
+          width: 30,
+          height: 16,
+          borderRadius: 8,
+          background: r.enabled ? "var(--accent)" : "var(--surf-3)",
+          position: "relative",
+          opacity: disabled ? 0.5 : 1,
+          cursor: disabled ? "not-allowed" : "pointer",
+        }}
+      >
+        <span
+          style={{
+            position: "absolute",
+            top: 2,
+            left: r.enabled ? 16 : 2,
+            width: 12,
+            height: 12,
+            borderRadius: 6,
+            background: "#fff",
+          }}
+        />
+      </button>
+      <div style={{ minWidth: 0 }}>
+        <div className="mono" style={{ fontSize: 12.5, color: "var(--text-1)" }}>
+          {r.name}
+        </div>
+        <div className="mono" style={{ fontSize: 10.5, color: "var(--text-3)", marginTop: 4 }}>
+          {describePredicateInline(r.predicate)}
+          {r.filter && describeFilterInline(r.filter) && (
+            <>
+              {" · "}
+              <span style={{ color: "var(--text-2)" }}>{describeFilterInline(r.filter)}</span>
+            </>
+          )}
+          {" · window "}
+          {fmtSecondsShort(r.window_seconds)}
+          {" · cooldown "}
+          {fmtSecondsShort(r.cooldown_seconds)}
+        </div>
+        <div className="mono" style={{ fontSize: 10, color: "var(--text-4)", marginTop: 2 }}>
+          → {r.action_url}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onEdit}
+        disabled={disabled}
+        style={{
+          color: "var(--text-2)",
+          padding: "4px 8px",
+          borderRadius: 4,
+          fontSize: 11,
+          fontFamily: "var(--mono)",
+          opacity: disabled ? 0.5 : 1,
+          cursor: disabled ? "not-allowed" : "pointer",
+        }}
+      >
+        edit
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        disabled={disabled}
+        title="Delete rule"
+        style={{
+          color: "var(--text-3)",
+          padding: 4,
+          borderRadius: 4,
+          opacity: disabled ? 0.5 : 1,
+          cursor: disabled ? "not-allowed" : "pointer",
+        }}
+      >
+        <Icon.X />
+      </button>
+    </div>
+  );
+}
+
+function RuleEditor({
+  draft,
+  setDraft,
+  onSave,
+  onCancel,
+  submitting,
+  label,
+}: {
+  draft: AlertRulePayload;
+  setDraft: (d: AlertRulePayload) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  submitting: boolean;
+  label: string;
+}) {
+  function setPredicate(next: AlertPredicate) {
+    setDraft({ ...draft, predicate: next });
+  }
+  function setMetric(metric: AlertPredicate["metric"]) {
+    if (metric === "outcome_count") {
+      setPredicate({ metric, outcome: "diverged", operator: ">", threshold: 3 });
+    } else if (metric === "rollback_count") {
+      setPredicate({ metric, operator: ">", threshold: 5 });
+    } else if (metric === "rollback_rate") {
+      setPredicate({ metric, operator: ">", threshold: 0.12 });
+    } else {
+      setPredicate({ metric: "gain_margin_min", operator: "<", threshold: 1.0 });
+    }
+  }
+
+  return (
+    <div
+      style={{
+        padding: "14px",
+        borderBottom: "1px solid var(--border)",
+        background: "var(--surf-2)",
+      }}
+    >
+      <div
+        className="label"
+        style={{ marginBottom: 10, color: "var(--accent)" }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "120px 1fr",
+          gap: "8px 12px",
+          alignItems: "center",
+          maxWidth: 760,
+        }}
+      >
+        <div className="label">Name</div>
+        <input
+          type="text"
+          value={draft.name}
+          onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+          style={inputStyle}
+        />
+
+        <div className="label">When</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <select
+            value={draft.predicate.metric}
+            onChange={(e) => setMetric(e.target.value as AlertPredicate["metric"])}
+            style={{ ...inputStyle, cursor: "pointer", minWidth: 160 }}
           >
-            <div>
-              <button
-                type="button"
-                onClick={() => toggle(r.id)}
-                style={{
-                  width: 30,
-                  height: 16,
-                  borderRadius: 8,
-                  background: r.on ? "var(--accent)" : "var(--surf-3)",
-                  position: "relative",
-                  transition: "background 150ms ease",
-                }}
-              >
-                <span
-                  style={{
-                    position: "absolute",
-                    top: 2,
-                    left: r.on ? 16 : 2,
-                    width: 12,
-                    height: 12,
-                    borderRadius: 6,
-                    background: "#fff",
-                    transition: "left 150ms ease",
-                  }}
-                />
-              </button>
-            </div>
-            <input
-              type="text"
-              className="rule-when"
-              value={r.when}
-              onChange={(e) =>
-                setRules((rs) =>
-                  rs.map((x) => (x.id === r.id ? { ...x, when: e.target.value } : x)),
-                )
-              }
-              style={inputStyle}
-            />
-            <input
-              type="text"
-              className="rule-within"
-              value={r.within}
-              onChange={(e) =>
-                setRules((rs) =>
-                  rs.map((x) => (x.id === r.id ? { ...x, within: e.target.value } : x)),
-                )
-              }
-              style={inputStyle}
-            />
-            <input
-              type="text"
-              className="rule-then"
-              value={r.action}
-              onChange={(e) =>
-                setRules((rs) =>
-                  rs.map((x) => (x.id === r.id ? { ...x, action: e.target.value } : x)),
-                )
-              }
-              style={{ ...inputStyle, color: "var(--accent)" }}
-            />
-            <button
-              type="button"
-              onClick={() => remove(r.id)}
-              style={{
-                color: "var(--text-3)",
-                padding: 4,
-                borderRadius: 4,
+            <option value="outcome_count">count of outcome</option>
+            <option value="rollback_count">count of rollbacks</option>
+            <option value="rollback_rate">rollback rate</option>
+            <option value="gain_margin_min">any gain margin</option>
+          </select>
+          {draft.predicate.metric === "outcome_count" && (
+            <select
+              value={draft.predicate.outcome}
+              onChange={(e) => {
+                if (draft.predicate.metric !== "outcome_count") return;
+                setPredicate({
+                  ...draft.predicate,
+                  outcome: e.target.value as Outcome,
+                });
               }}
-              title="Remove rule"
+              style={{ ...inputStyle, cursor: "pointer" }}
             >
-              <Icon.X />
-            </button>
-          </div>
-        ))}
+              {OUTCOMES.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
+          )}
+          <select
+            value={draft.predicate.operator}
+            onChange={(e) =>
+              setPredicate({
+                ...draft.predicate,
+                operator: e.target.value as AlertOperator,
+              } as AlertPredicate)
+            }
+            style={{ ...inputStyle, cursor: "pointer", width: 70 }}
+          >
+            {(draft.predicate.metric === "gain_margin_min"
+              ? (["<", "<="] as const)
+              : OPERATORS
+            ).map((op) => (
+              <option key={op} value={op}>
+                {op}
+              </option>
+            ))}
+          </select>
+          <input
+            type="number"
+            step={
+              draft.predicate.metric === "rollback_rate"
+                ? 0.01
+                : draft.predicate.metric === "gain_margin_min"
+                ? 0.1
+                : 1
+            }
+            value={draft.predicate.threshold}
+            onChange={(e) =>
+              setPredicate({
+                ...draft.predicate,
+                threshold: Number(e.target.value),
+              } as AlertPredicate)
+            }
+            style={{ ...inputStyle, width: 100 }}
+          />
+        </div>
+
+        <div className="label">Window</div>
+        <select
+          value={draft.window_seconds}
+          onChange={(e) => setDraft({ ...draft, window_seconds: Number(e.target.value) })}
+          style={{ ...inputStyle, cursor: "pointer", maxWidth: 200 }}
+        >
+          <option value={60}>1 minute</option>
+          <option value={300}>5 minutes</option>
+          <option value={900}>15 minutes</option>
+          <option value={3600}>1 hour</option>
+          <option value={21600}>6 hours</option>
+          <option value={86400}>24 hours</option>
+        </select>
+
+        <div className="label">Cooldown</div>
+        <select
+          value={draft.cooldown_seconds ?? 600}
+          onChange={(e) =>
+            setDraft({ ...draft, cooldown_seconds: Number(e.target.value) })
+          }
+          style={{ ...inputStyle, cursor: "pointer", maxWidth: 200 }}
+        >
+          <option value={0}>none (always re-fire)</option>
+          <option value={300}>5 minutes</option>
+          <option value={600}>10 minutes</option>
+          <option value={1800}>30 minutes</option>
+          <option value={3600}>1 hour</option>
+          <option value={86400}>24 hours</option>
+        </select>
+
+        <div className="label">Filter</div>
+        <FilterEditor
+          value={draft.filter ?? null}
+          onChange={(f) => setDraft({ ...draft, filter: f })}
+        />
+
+        <div className="label">Webhook URL</div>
+        <input
+          type="url"
+          value={draft.action_url}
+          placeholder="https://hooks.your-domain.com/loopgain"
+          onChange={(e) => setDraft({ ...draft, action_url: e.target.value })}
+          style={inputStyle}
+        />
+      </div>
+      <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={submitting || !draft.action_url || !draft.name}
+          style={{
+            height: 28,
+            padding: "0 14px",
+            borderRadius: 5,
+            background: "var(--accent)",
+            color: "var(--surf-0)",
+            fontSize: 12,
+            fontFamily: "var(--mono)",
+            cursor: submitting || !draft.action_url ? "not-allowed" : "pointer",
+            opacity: submitting || !draft.action_url ? 0.5 : 1,
+          }}
+        >
+          {submitting ? "saving…" : "save"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={submitting}
+          style={{
+            height: 28,
+            padding: "0 14px",
+            borderRadius: 5,
+            border: "1px solid var(--border)",
+            background: "transparent",
+            color: "var(--text-2)",
+            fontSize: 12,
+            fontFamily: "var(--mono)",
+            cursor: "pointer",
+          }}
+        >
+          cancel
+        </button>
       </div>
     </div>
   );
 }
 
-const inputStyle: React.CSSProperties = {
-  background: "transparent",
-  border: "1px solid transparent",
-  borderRadius: 4,
-  padding: "4px 6px",
-  fontSize: 12,
-  fontFamily: "var(--mono)",
-  color: "var(--text-1)",
-  outline: "none",
-  minWidth: 0,
-  width: "100%",
-};
+function FilterEditor({
+  value,
+  onChange,
+}: {
+  value: { workload_id?: string | null; framework?: string | null; loop_type?: string | null; team?: string | null } | null;
+  onChange: (v: typeof value) => void;
+}) {
+  const v = value ?? {};
+  function set(key: "workload_id" | "framework" | "loop_type" | "team", str: string) {
+    const next = { ...v, [key]: str || undefined };
+    if (!next.workload_id && !next.framework && !next.loop_type && !next.team) {
+      onChange(null);
+    } else {
+      onChange(next);
+    }
+  }
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      <input
+        type="text"
+        placeholder="framework"
+        value={v.framework ?? ""}
+        onChange={(e) => set("framework", e.target.value)}
+        style={inputStyle}
+      />
+      <input
+        type="text"
+        placeholder="loop_type"
+        value={v.loop_type ?? ""}
+        onChange={(e) => set("loop_type", e.target.value)}
+        style={inputStyle}
+      />
+      <input
+        type="text"
+        placeholder="team"
+        value={v.team ?? ""}
+        onChange={(e) => set("team", e.target.value)}
+        style={inputStyle}
+      />
+      <input
+        type="text"
+        placeholder="workload_id"
+        value={v.workload_id ?? ""}
+        onChange={(e) => set("workload_id", e.target.value)}
+        style={inputStyle}
+      />
+    </div>
+  );
+}
+
+function describePredicateInline(p: AlertPredicate): string {
+  switch (p.metric) {
+    case "outcome_count":
+      return `count(outcome=${p.outcome}) ${p.operator} ${p.threshold}`;
+    case "rollback_count":
+      return `count(rollback) ${p.operator} ${p.threshold}`;
+    case "rollback_rate":
+      return `rollback_rate ${p.operator} ${(p.threshold * 100).toFixed(0)}%`;
+    case "gain_margin_min":
+      return `any gain_margin ${p.operator} ${p.threshold}`;
+  }
+}
+
+function describeFilterInline(
+  f: { workload_id?: string | null; framework?: string | null; loop_type?: string | null; team?: string | null },
+): string {
+  const parts: string[] = [];
+  for (const k of ["workload_id", "framework", "loop_type", "team"] as const) {
+    const v = f[k];
+    if (v) parts.push(`${k}=${v}`);
+  }
+  return parts.join(" · ");
+}
+
+function fmtSecondsShort(s: number): string {
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.round(s / 60)}m`;
+  if (s < 86400) return `${Math.round(s / 3600)}h`;
+  return `${Math.round(s / 86400)}d`;
+}
 
 // ── Cost per iteration ────────────────────────────────────────────────
 

@@ -5,14 +5,63 @@
 // data layer in either mode.
 
 import type {
+  AlertDelivery,
+  AlertRule,
   CalibrationResponse,
+  EventDetail,
   EventsResponse,
   LoopEvent,
   Outcome,
+  PerIteration,
   ProfileEvent,
   ProfilesResponse,
   StatsResponse,
 } from "../types";
+
+// Demo classification mappings — per-workload framework / loop_type / team
+// stamps so the filter bar has something to filter by in demo mode.
+const FRAMEWORK_BY_WORKLOAD: Record<string, string> = {
+  "rag-rewrite-A": "langgraph",
+  "rag-rewrite-B": "langgraph",
+  "sql-synth-prod": "crewai",
+  "code-rewrite-eu": "autogen",
+  "plan-critic-v3": "crewai",
+  "summarize-eval": "langgraph",
+  "unit-test-fix": "autogen",
+  "spec-refine-v2": "vesper",
+  "extract-validate": "langgraph",
+  "translate-grade-jp": "crewai",
+  "agent-self-review": "vesper",
+  "tilescope-rewrite": "autogen",
+};
+const LOOP_TYPE_BY_WORKLOAD: Record<string, string> = {
+  "rag-rewrite-A": "rag_refine",
+  "rag-rewrite-B": "rag_refine",
+  "sql-synth-prod": "verify_revise",
+  "code-rewrite-eu": "verify_revise",
+  "plan-critic-v3": "tool_use_retry",
+  "summarize-eval": "verify_revise",
+  "unit-test-fix": "verify_revise",
+  "spec-refine-v2": "verify_revise",
+  "extract-validate": "rag_refine",
+  "translate-grade-jp": "verify_revise",
+  "agent-self-review": "tool_use_retry",
+  "tilescope-rewrite": "verify_revise",
+};
+const TEAM_BY_WORKLOAD: Record<string, string> = {
+  "rag-rewrite-A": "search-prod",
+  "rag-rewrite-B": "search-prod",
+  "sql-synth-prod": "data-platform",
+  "code-rewrite-eu": "code-tools",
+  "plan-critic-v3": "agents-platform",
+  "summarize-eval": "ml-eval",
+  "unit-test-fix": "code-tools",
+  "spec-refine-v2": "agents-platform",
+  "extract-validate": "data-platform",
+  "translate-grade-jp": "i18n",
+  "agent-self-review": "agents-platform",
+  "tilescope-rewrite": "code-tools",
+};
 
 const SEED = 0x9e3779b9;
 
@@ -59,12 +108,16 @@ function pickOutcome(rng: () => number): Outcome {
 }
 
 interface SyntheticEvent extends ProfileEvent, Omit<LoopEvent, "workload_id"> {
+  id: number;
   workload_id: string;
   library_version: string;
   savings_vs_fixed_cap: number;
   rollback_triggered: boolean;
   first_eta_prediction: number | null;
   first_eta_at_iteration: number | null;
+  framework: string;
+  loop_type: string;
+  team: string;
 }
 
 // Per-workload calibration bias for the demo fleet. Most workloads have
@@ -156,6 +209,7 @@ function buildFleet(): SyntheticEvent[] {
     }
 
     events.push({
+      id: i + 1, // demo IDs start at 1; deterministic across renders.
       timestamp_hour: ts,
       workload_id: workload,
       outcome,
@@ -167,13 +221,62 @@ function buildFleet(): SyntheticEvent[] {
       profile_samples: iters,
       savings_vs_fixed_cap: savings,
       rollback_triggered: rollback,
-      library_version: "0.1.0",
+      library_version: "0.1.6",
       first_eta_prediction: firstEta,
       first_eta_at_iteration: firstEtaAt,
+      framework: FRAMEWORK_BY_WORKLOAD[workload] ?? "langgraph",
+      loop_type: LOOP_TYPE_BY_WORKLOAD[workload] ?? "verify_revise",
+      team: TEAM_BY_WORKLOAD[workload] ?? "default",
     });
   }
   events.sort((a, b) => b.timestamp_hour - a.timestamp_hour);
   return events;
+}
+
+// Build a synthetic per-iteration trajectory consistent with this event's
+// outcome and profile_max. Convergence_profile is one entry shorter than
+// error_history (no Aβ for the first observation, matching the library).
+function buildPerIteration(e: SyntheticEvent): PerIteration {
+  const errors: number[] = [];
+  const ab: number[] = [];
+  const targetAB =
+    e.outcome === "converged" ? Math.max(0.2, e.profile_median ?? 0.4) :
+    e.outcome === "max_iterations" ? Math.max(0.6, e.profile_median ?? 0.7) :
+    e.outcome === "oscillating" ? 0.97 :
+    1.08; // diverged
+  let err = 1.0;
+  errors.push(err);
+  for (let i = 1; i < e.iterations_used; i++) {
+    const jitter = (((i * 9301 + 49297) % 233280) / 233280 - 0.5) * 0.1;
+    const aBeta = Math.max(0.05, targetAB + jitter);
+    err = err * aBeta;
+    errors.push(err);
+    ab.push(aBeta);
+  }
+  return {
+    convergence_profile: ab,
+    error_history: errors,
+    truncated: false,
+    cap: 256,
+  };
+}
+
+// Helper to apply classification filters to a synthetic event list.
+function applyFilters(
+  evs: SyntheticEvent[],
+  opts: {
+    workloadId?: string;
+    framework?: string;
+    loop_type?: string;
+    team?: string;
+  },
+): SyntheticEvent[] {
+  let out = evs;
+  if (opts.workloadId) out = out.filter((e) => e.workload_id === opts.workloadId);
+  if (opts.framework) out = out.filter((e) => e.framework === opts.framework);
+  if (opts.loop_type) out = out.filter((e) => e.loop_type === opts.loop_type);
+  if (opts.team) out = out.filter((e) => e.team === opts.team);
+  return out;
 }
 
 // Build once per session so all hooks see the same fleet.
@@ -193,6 +296,14 @@ export function demoStats(): StatsResponse {
   for (const e of inWindow) outcomeMap.set(e.outcome, (outcomeMap.get(e.outcome) ?? 0) + 1);
   const workloadMap = new Map<string, number>();
   for (const e of inWindow) workloadMap.set(e.workload_id, (workloadMap.get(e.workload_id) ?? 0) + 1);
+  // Distinct classification values for the filter bar dropdowns.
+  const tally = (key: "framework" | "loop_type" | "team") => {
+    const m = new Map<string, number>();
+    for (const e of inWindow) m.set(e[key], (m.get(e[key]) ?? 0) + 1);
+    return Array.from(m)
+      .map(([value, count]) => ({ value, count }))
+      .sort((a, b) => b.count - a.count);
+  };
   return {
     customer_id: "demo-customer",
     window_days: 30,
@@ -207,20 +318,37 @@ export function demoStats(): StatsResponse {
     workloads: Array.from(workloadMap)
       .map(([workload_id, count]) => ({ workload_id, count }))
       .sort((a, b) => b.count - a.count),
+    frameworks: tally("framework"),
+    loop_types: tally("loop_type"),
+    teams: tally("team"),
   };
 }
 
-export function demoProfiles(opts: { workloadId?: string; sinceHours?: number } = {}): ProfilesResponse {
+export function demoProfiles(
+  opts: {
+    workloadId?: string;
+    sinceHours?: number;
+    framework?: string;
+    loop_type?: string;
+    team?: string;
+  } = {},
+): ProfilesResponse {
   const since =
     Math.floor(Date.now() / 1000) - (opts.sinceHours ?? 30 * 24) * 3600;
-  let evs = fleet().filter((e) => e.timestamp_hour >= since);
-  if (opts.workloadId) evs = evs.filter((e) => e.workload_id === opts.workloadId);
+  const evs = applyFilters(
+    fleet().filter((e) => e.timestamp_hour >= since),
+    opts,
+  );
   return {
     customer_id: "demo-customer",
     workload_id: opts.workloadId ?? null,
     events: evs.slice(0, 1000).map((e) => ({
+      id: e.id,
       timestamp_hour: e.timestamp_hour,
       workload_id: opts.workloadId ? undefined : e.workload_id,
+      framework: e.framework,
+      loop_type: e.loop_type,
+      team: e.team,
       profile_min: e.profile_min,
       profile_max: e.profile_max,
       profile_median: e.profile_median,
@@ -232,14 +360,31 @@ export function demoProfiles(opts: { workloadId?: string; sinceHours?: number } 
   };
 }
 
-export function demoEvents(opts: { rollbacksOnly?: boolean } = {}): EventsResponse {
-  let evs = fleet();
+export function demoEvents(
+  opts: {
+    rollbacksOnly?: boolean;
+    framework?: string;
+    loop_type?: string;
+    team?: string;
+    workload_id?: string;
+  } = {},
+): EventsResponse {
+  let evs = applyFilters(fleet(), {
+    workloadId: opts.workload_id,
+    framework: opts.framework,
+    loop_type: opts.loop_type,
+    team: opts.team,
+  });
   if (opts.rollbacksOnly) evs = evs.filter((e) => e.rollback_triggered);
   return {
     customer_id: "demo-customer",
     events: evs.slice(0, 500).map((e) => ({
+      id: e.id,
       timestamp_hour: e.timestamp_hour,
       workload_id: e.workload_id,
+      framework: e.framework,
+      loop_type: e.loop_type,
+      team: e.team,
       outcome: e.outcome,
       iterations_used: e.iterations_used,
       gain_margin: e.gain_margin,
@@ -253,24 +398,36 @@ export function demoEvents(opts: { rollbacksOnly?: boolean } = {}): EventsRespon
 }
 
 export function demoCalibration(
-  opts: { workloadId?: string; sinceHours?: number } = {},
+  opts: {
+    workloadId?: string;
+    sinceHours?: number;
+    framework?: string;
+    loop_type?: string;
+    team?: string;
+  } = {},
 ): CalibrationResponse {
   const since =
     Math.floor(Date.now() / 1000) - (opts.sinceHours ?? 30 * 24) * 3600;
-  let evs = fleet().filter(
-    (e) =>
-      e.outcome === "converged" &&
-      e.first_eta_prediction !== null &&
-      e.first_eta_at_iteration !== null &&
-      e.timestamp_hour >= since,
+  const filtered = applyFilters(
+    fleet().filter(
+      (e) =>
+        e.outcome === "converged" &&
+        e.first_eta_prediction !== null &&
+        e.first_eta_at_iteration !== null &&
+        e.timestamp_hour >= since,
+    ),
+    opts,
   );
-  if (opts.workloadId) evs = evs.filter((e) => e.workload_id === opts.workloadId);
   return {
     customer_id: "demo-customer",
     workload_id: opts.workloadId ?? null,
-    events: evs.slice(0, 1000).map((e) => ({
+    events: filtered.slice(0, 1000).map((e) => ({
+      id: e.id,
       timestamp_hour: e.timestamp_hour,
       workload_id: e.workload_id,
+      framework: e.framework,
+      loop_type: e.loop_type,
+      team: e.team,
       iterations_used: e.iterations_used,
       first_eta_prediction: e.first_eta_prediction!,
       first_eta_at_iteration: e.first_eta_at_iteration!,
@@ -278,4 +435,162 @@ export function demoCalibration(
       library_version: e.library_version,
     })),
   };
+}
+
+export function demoEventDetail(id: number): EventDetail {
+  const e = fleet().find((x) => x.id === id);
+  if (!e) {
+    // Fallback shape for unknown ids — shouldn't happen in normal demo flow.
+    return {
+      id,
+      timestamp_hour: Math.floor(Date.now() / 1000),
+      workload_id: null,
+      library_version: "0.1.6",
+      outcome: "converged",
+      iterations_used: 0,
+      gain_margin: null,
+      savings_vs_fixed_cap: null,
+      rollback_triggered: 0,
+      profile_min: null,
+      profile_max: null,
+      profile_median: null,
+      profile_samples: 0,
+      threshold_fast_converge: 0.3,
+      threshold_converging: 0.85,
+      threshold_stalling: 0.95,
+      threshold_oscillating_upper: 1.05,
+      smoothing_window: 3,
+      first_eta_prediction: null,
+      first_eta_at_iteration: null,
+      per_iteration: null,
+      received_at: Math.floor(Date.now() / 1000),
+    };
+  }
+  return {
+    id: e.id,
+    timestamp_hour: e.timestamp_hour,
+    workload_id: e.workload_id,
+    library_version: e.library_version,
+    outcome: e.outcome,
+    iterations_used: e.iterations_used,
+    gain_margin: e.gain_margin,
+    savings_vs_fixed_cap: e.savings_vs_fixed_cap,
+    rollback_triggered: e.rollback_triggered ? 1 : 0,
+    profile_min: e.profile_min,
+    profile_max: e.profile_max,
+    profile_median: e.profile_median,
+    profile_samples: e.profile_samples,
+    threshold_fast_converge: 0.3,
+    threshold_converging: 0.85,
+    threshold_stalling: 0.95,
+    threshold_oscillating_upper: 1.05,
+    smoothing_window: 3,
+    first_eta_prediction: e.first_eta_prediction,
+    first_eta_at_iteration: e.first_eta_at_iteration,
+    per_iteration: buildPerIteration(e),
+    framework: e.framework,
+    loop_type: e.loop_type,
+    team: e.team,
+    received_at: e.timestamp_hour + 30,
+  };
+}
+
+// ── Demo alert rules + deliveries ─────────────────────────────────────
+
+export function demoAlertRules(): AlertRule[] {
+  const now = Math.floor(Date.now() / 1000);
+  return [
+    {
+      id: 1,
+      name: "DIVERGING cluster",
+      enabled: true,
+      predicate: { metric: "outcome_count", outcome: "diverged", operator: ">", threshold: 3 },
+      filter: null,
+      window_seconds: 300,
+      cooldown_seconds: 600,
+      action_type: "webhook",
+      action_url: "https://hooks.example.com/loopgain/diverging",
+      created_at: now - 86400 * 14,
+      updated_at: now - 86400 * 14,
+      last_fired_at: now - 3600 * 6,
+    },
+    {
+      id: 2,
+      name: "Low gain margin on prod search",
+      enabled: true,
+      predicate: { metric: "gain_margin_min", operator: "<", threshold: 1.0 },
+      filter: { team: "search-prod" },
+      window_seconds: 600,
+      cooldown_seconds: 1800,
+      action_type: "webhook",
+      action_url: "https://hooks.example.com/loopgain/gm-low",
+      created_at: now - 86400 * 7,
+      updated_at: now - 86400 * 2,
+      last_fired_at: null,
+    },
+    {
+      id: 3,
+      name: "Rollback rate over 12% on LangGraph",
+      enabled: false,
+      predicate: { metric: "rollback_rate", operator: ">", threshold: 0.12 },
+      filter: { framework: "langgraph" },
+      window_seconds: 86400,
+      cooldown_seconds: 86400,
+      action_type: "webhook",
+      action_url: "https://hooks.example.com/loopgain/rollback-rate",
+      created_at: now - 86400 * 21,
+      updated_at: now - 86400 * 1,
+      last_fired_at: null,
+    },
+  ];
+}
+
+export function demoAlertDeliveries(): AlertDelivery[] {
+  const now = Math.floor(Date.now() / 1000);
+  return [
+    {
+      id: 1,
+      rule_id: 1,
+      rule_name: "DIVERGING cluster",
+      fired_at: now - 3600 * 6,
+      match_value: 5,
+      match_count: 5,
+      delivery_status: "sent",
+      delivery_status_code: 200,
+      delivery_error: null,
+    },
+    {
+      id: 2,
+      rule_id: 1,
+      rule_name: "DIVERGING cluster",
+      fired_at: now - 3600 * 12,
+      match_value: 4,
+      match_count: 4,
+      delivery_status: "sent",
+      delivery_status_code: 202,
+      delivery_error: null,
+    },
+    {
+      id: 3,
+      rule_id: 2,
+      rule_name: "Low gain margin on prod search",
+      fired_at: now - 86400 * 1.4,
+      match_value: 0.83,
+      match_count: 2,
+      delivery_status: "failed",
+      delivery_status_code: 502,
+      delivery_error: "non_2xx",
+    },
+    {
+      id: 4,
+      rule_id: 1,
+      rule_name: "DIVERGING cluster",
+      fired_at: now - 86400 * 2,
+      match_value: 6,
+      match_count: 6,
+      delivery_status: "skipped_cooldown",
+      delivery_status_code: null,
+      delivery_error: null,
+    },
+  ];
 }

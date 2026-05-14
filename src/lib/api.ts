@@ -15,9 +15,15 @@ import {
   useState,
 } from "react";
 import type {
+  AlertDeliveriesResponse,
+  AlertRulePayload,
+  AlertRuleResponse,
+  AlertRulesResponse,
   CalibrationResponse,
   Config,
+  EventDetailResponse,
   EventsResponse,
+  FilterSet,
   HealthResponse,
   ProfilesResponse,
   StatsResponse,
@@ -119,6 +125,36 @@ async function apiGet<T>(
   return (await resp.json()) as T;
 }
 
+async function apiSend<T>(
+  endpoint: string,
+  token: string,
+  path: string,
+  method: "POST" | "PUT" | "DELETE",
+  body?: unknown,
+  signal?: AbortSignal,
+): Promise<T> {
+  const resp = await fetch(buildUrl(endpoint, path), {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal,
+  });
+  if (!resp.ok) {
+    let text = "";
+    try {
+      text = await resp.text();
+    } catch {
+      /* noop */
+    }
+    throw new ApiError(resp.status, `HTTP ${resp.status} on ${path}${text ? `: ${text}` : ""}`);
+  }
+  // DELETE may return a small body; otherwise JSON.
+  return (await resp.json()) as T;
+}
+
 // ── Typed endpoint wrappers ───────────────────────────────────────────
 
 export function getHealth(endpoint: string, signal?: AbortSignal): Promise<HealthResponse> {
@@ -135,42 +171,139 @@ export function getStats(c: Config, signal?: AbortSignal): Promise<StatsResponse
 
 export function getProfiles(
   c: Config,
-  opts: { workloadId?: string; sinceHours?: number } = {},
+  opts: { workloadId?: string; sinceHours?: number } & FilterSet = {},
   signal?: AbortSignal,
 ): Promise<ProfilesResponse> {
   return apiGet<ProfilesResponse>(
     c.endpoint,
     c.token,
     "/v1/profiles",
-    { workload_id: opts.workloadId, since_hours: opts.sinceHours },
+    {
+      workload_id: opts.workloadId ?? opts.workload_id,
+      since_hours: opts.sinceHours,
+      framework: opts.framework,
+      loop_type: opts.loop_type,
+      team: opts.team,
+    },
     signal,
   );
 }
 
 export function getEvents(
   c: Config,
-  opts: { rollbacksOnly?: boolean } = {},
+  opts: { rollbacksOnly?: boolean } & FilterSet = {},
   signal?: AbortSignal,
 ): Promise<EventsResponse> {
   return apiGet<EventsResponse>(
     c.endpoint,
     c.token,
     "/v1/events",
-    opts.rollbacksOnly ? { rollbacks_only: "true" } : undefined,
+    {
+      rollbacks_only: opts.rollbacksOnly ? "true" : undefined,
+      framework: opts.framework,
+      loop_type: opts.loop_type,
+      team: opts.team,
+      workload_id: opts.workload_id,
+    },
     signal,
   );
 }
 
 export function getCalibration(
   c: Config,
-  opts: { workloadId?: string; sinceHours?: number } = {},
+  opts: { workloadId?: string; sinceHours?: number } & FilterSet = {},
   signal?: AbortSignal,
 ): Promise<CalibrationResponse> {
   return apiGet<CalibrationResponse>(
     c.endpoint,
     c.token,
     "/v1/calibration",
-    { workload_id: opts.workloadId, since_hours: opts.sinceHours },
+    {
+      workload_id: opts.workloadId ?? opts.workload_id,
+      since_hours: opts.sinceHours,
+      framework: opts.framework,
+      loop_type: opts.loop_type,
+      team: opts.team,
+    },
+    signal,
+  );
+}
+
+export function getEventDetail(
+  c: Config,
+  id: number,
+  signal?: AbortSignal,
+): Promise<EventDetailResponse> {
+  return apiGet<EventDetailResponse>(
+    c.endpoint,
+    c.token,
+    `/v1/event/${id}`,
+    undefined,
+    signal,
+  );
+}
+
+export function getAlertRules(
+  c: Config,
+  signal?: AbortSignal,
+): Promise<AlertRulesResponse> {
+  return apiGet<AlertRulesResponse>(
+    c.endpoint,
+    c.token,
+    "/v1/alerts/rules",
+    undefined,
+    signal,
+  );
+}
+
+export function createAlertRule(
+  c: Config,
+  payload: AlertRulePayload,
+): Promise<AlertRuleResponse> {
+  return apiSend<AlertRuleResponse>(
+    c.endpoint,
+    c.token,
+    "/v1/alerts/rules",
+    "POST",
+    payload,
+  );
+}
+
+export function updateAlertRule(
+  c: Config,
+  id: number,
+  payload: AlertRulePayload,
+): Promise<AlertRuleResponse> {
+  return apiSend<AlertRuleResponse>(
+    c.endpoint,
+    c.token,
+    `/v1/alerts/rules/${id}`,
+    "PUT",
+    payload,
+  );
+}
+
+export function deleteAlertRule(
+  c: Config,
+  id: number,
+): Promise<{ deleted: number }> {
+  return apiSend<{ deleted: number }>(
+    c.endpoint,
+    c.token,
+    `/v1/alerts/rules/${id}`,
+    "DELETE",
+  );
+}
+
+export function getAlertDeliveries(
+  c: Config,
+  signal?: AbortSignal,
+): Promise<AlertDeliveriesResponse> {
+  return apiGet<AlertDeliveriesResponse>(
+    c.endpoint,
+    c.token,
+    "/v1/alerts/deliveries",
+    undefined,
     signal,
   );
 }

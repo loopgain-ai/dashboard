@@ -4,10 +4,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AuthContext, useAuthProvider } from "./lib/api";
+import { FilterContext, useFiltersProvider } from "./lib/filters";
 import { useStats } from "./lib/data-hooks";
 import { ConnectDialog } from "./components/auth/ConnectDialog";
 import {
   CommandPalette,
+  FilterBar,
   NAV,
   Sidebar,
   TopBar,
@@ -25,6 +27,7 @@ import { GainMargin } from "./components/panels/GainMargin";
 import { Rollbacks } from "./components/panels/Rollbacks";
 import { ETAAccuracy } from "./components/panels/ETAAccuracy";
 import { LoopDetail } from "./components/panels/LoopDetail";
+import { Alerts } from "./components/panels/Alerts";
 import { Settings } from "./components/panels/Settings";
 import { EmptyState } from "./components/panels/EmptyState";
 import { useAuth } from "./lib/api";
@@ -51,9 +54,12 @@ function loadCost(): number {
 
 export function App() {
   const auth = useAuthProvider();
+  const filters = useFiltersProvider();
   return (
     <AuthContext.Provider value={auth}>
-      <AppInner />
+      <FilterContext.Provider value={filters}>
+        <AppInner />
+      </FilterContext.Provider>
     </AuthContext.Provider>
   );
 }
@@ -126,6 +132,7 @@ function AppInner() {
           m: "gain-margin",
           r: "rollbacks",
           e: "eta",
+          a: "alerts",
           s: "settings",
         };
         const target = map[e.key];
@@ -187,6 +194,8 @@ function AppInner() {
         return <Rollbacks pollMs={pollMs} sinceHours={sinceHours} />;
       case "eta":
         return <ETAAccuracy />;
+      case "alerts":
+        return <Alerts setRoute={setRoute} />;
       case "settings":
         return <Settings costPerIter={costPerIter} setCostPerIter={setCostPerIter} />;
       case "empty":
@@ -218,6 +227,7 @@ function AppInner() {
           openPalette={() => setPaletteOpen(true)}
           openConnect={() => setConnectOpen(true)}
         />
+        {isAuthed && route !== "settings" && route !== "empty" && <FilterBar />}
         <main style={{ flex: 1, overflow: "auto" }}>{content}</main>
         <footer
           className="app-footer"
@@ -234,7 +244,7 @@ function AppInner() {
             flex: "0 0 auto",
           }}
         >
-          <span className="mono">v0.2.0</span>
+          <span className="mono">v0.3.0</span>
           <span>·</span>
           <span>
             ingestion{" "}

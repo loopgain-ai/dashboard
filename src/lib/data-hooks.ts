@@ -3,7 +3,10 @@
 
 import { useMemo } from "react";
 import {
+  getAlertDeliveries,
+  getAlertRules,
   getCalibration,
+  getEventDetail,
   getEvents,
   getProfiles,
   getStats,
@@ -11,9 +14,21 @@ import {
   useAuth,
   type LoadState,
 } from "./api";
-import { demoCalibration, demoEvents, demoProfiles, demoStats } from "./demo";
+import { useFilters } from "./filters";
+import {
+  demoAlertDeliveries,
+  demoAlertRules,
+  demoCalibration,
+  demoEventDetail,
+  demoEvents,
+  demoProfiles,
+  demoStats,
+} from "./demo";
 import type {
+  AlertDeliveriesResponse,
+  AlertRulesResponse,
   CalibrationResponse,
+  EventDetailResponse,
   EventsResponse,
   ProfilesResponse,
   StatsResponse,
@@ -43,21 +58,53 @@ export function useProfiles(
   opts: { workloadId?: string; sinceHours?: number; pollMs?: number } = {},
 ): { state: LoadState<ProfilesResponse>; refresh: () => void } {
   const { demo } = useAuth();
+  const { filters } = useFilters();
+  // workloadId from props overrides the global filter (used by Loop Detail
+  // to pin to a single workload regardless of the filter bar).
+  const effectiveWorkload = opts.workloadId ?? filters.workload_id;
   const { state, refresh } = useApi<ProfilesResponse>(
     demo
       ? null
       : (c, signal) =>
-          getProfiles(c, { workloadId: opts.workloadId, sinceHours: opts.sinceHours }, signal),
-    [opts.workloadId, opts.sinceHours],
+          getProfiles(
+            c,
+            {
+              workloadId: effectiveWorkload,
+              sinceHours: opts.sinceHours,
+              framework: filters.framework,
+              loop_type: filters.loop_type,
+              team: filters.team,
+            },
+            signal,
+          ),
+    [
+      effectiveWorkload,
+      opts.sinceHours,
+      filters.framework,
+      filters.loop_type,
+      filters.team,
+    ],
     { pollMs: opts.pollMs },
   );
   const demoState = useMemo<LoadState<ProfilesResponse>>(
     () => ({
       status: "ok",
-      data: demoProfiles({ workloadId: opts.workloadId, sinceHours: opts.sinceHours }),
+      data: demoProfiles({
+        workloadId: effectiveWorkload,
+        sinceHours: opts.sinceHours,
+        framework: filters.framework,
+        loop_type: filters.loop_type,
+        team: filters.team,
+      }),
       loadedAt: NOW(),
     }),
-    [opts.workloadId, opts.sinceHours],
+    [
+      effectiveWorkload,
+      opts.sinceHours,
+      filters.framework,
+      filters.loop_type,
+      filters.team,
+    ],
   );
   if (demo) return { state: demoState, refresh };
   return { state, refresh };
@@ -67,18 +114,50 @@ export function useEvents(
   opts: { rollbacksOnly?: boolean; sinceHours?: number; pollMs?: number } = {},
 ): { state: LoadState<EventsResponse>; refresh: () => void } {
   const { demo } = useAuth();
+  const { filters } = useFilters();
   const { state, refresh } = useApi<EventsResponse>(
-    demo ? null : (c, signal) => getEvents(c, { rollbacksOnly: opts.rollbacksOnly }, signal),
-    [opts.rollbacksOnly ?? false],
+    demo
+      ? null
+      : (c, signal) =>
+          getEvents(
+            c,
+            {
+              rollbacksOnly: opts.rollbacksOnly,
+              framework: filters.framework,
+              loop_type: filters.loop_type,
+              team: filters.team,
+              workload_id: filters.workload_id,
+            },
+            signal,
+          ),
+    [
+      opts.rollbacksOnly ?? false,
+      filters.framework,
+      filters.loop_type,
+      filters.team,
+      filters.workload_id,
+    ],
     { pollMs: opts.pollMs },
   );
   const demoState = useMemo<LoadState<EventsResponse>>(
     () => ({
       status: "ok",
-      data: demoEvents({ rollbacksOnly: opts.rollbacksOnly }),
+      data: demoEvents({
+        rollbacksOnly: opts.rollbacksOnly,
+        framework: filters.framework,
+        loop_type: filters.loop_type,
+        team: filters.team,
+        workload_id: filters.workload_id,
+      }),
       loadedAt: NOW(),
     }),
-    [opts.rollbacksOnly],
+    [
+      opts.rollbacksOnly,
+      filters.framework,
+      filters.loop_type,
+      filters.team,
+      filters.workload_id,
+    ],
   );
   const base = demo ? demoState : state;
   // The receiver doesn't accept a `since_hours` param on /v1/events, so we
@@ -104,26 +183,109 @@ export function useCalibration(
   opts: { workloadId?: string; sinceHours?: number; pollMs?: number } = {},
 ): { state: LoadState<CalibrationResponse>; refresh: () => void } {
   const { demo } = useAuth();
+  const { filters } = useFilters();
+  const effectiveWorkload = opts.workloadId ?? filters.workload_id;
   const { state, refresh } = useApi<CalibrationResponse>(
     demo
       ? null
       : (c, signal) =>
           getCalibration(
             c,
-            { workloadId: opts.workloadId, sinceHours: opts.sinceHours },
+            {
+              workloadId: effectiveWorkload,
+              sinceHours: opts.sinceHours,
+              framework: filters.framework,
+              loop_type: filters.loop_type,
+              team: filters.team,
+            },
             signal,
           ),
-    [opts.workloadId, opts.sinceHours],
-    { pollMs: opts.pollMs },
+    [
+      effectiveWorkload,
+      opts.sinceHours,
+      filters.framework,
+      filters.loop_type,
+      filters.team,
+    ],
   );
   const demoState = useMemo<LoadState<CalibrationResponse>>(
     () => ({
       status: "ok",
-      data: demoCalibration({ workloadId: opts.workloadId, sinceHours: opts.sinceHours }),
+      data: demoCalibration({
+        workloadId: effectiveWorkload,
+        sinceHours: opts.sinceHours,
+        framework: filters.framework,
+        loop_type: filters.loop_type,
+        team: filters.team,
+      }),
       loadedAt: NOW(),
     }),
-    [opts.workloadId, opts.sinceHours],
+    [
+      effectiveWorkload,
+      opts.sinceHours,
+      filters.framework,
+      filters.loop_type,
+      filters.team,
+    ],
   );
+  if (demo) return { state: demoState, refresh };
+  return { state, refresh };
+}
+
+export function useAlertRules(
+  opts: { pollMs?: number; refreshTrigger?: number } = {},
+): { state: LoadState<AlertRulesResponse>; refresh: () => void } {
+  const { demo } = useAuth();
+  const { state, refresh } = useApi<AlertRulesResponse>(
+    demo ? null : (c, signal) => getAlertRules(c, signal),
+    [],
+    opts,
+  );
+  const demoState = useMemo<LoadState<AlertRulesResponse>>(
+    () => ({ status: "ok", data: { rules: demoAlertRules() }, loadedAt: NOW() }),
+    [],
+  );
+  if (demo) return { state: demoState, refresh };
+  return { state, refresh };
+}
+
+export function useAlertDeliveries(
+  opts: { pollMs?: number; refreshTrigger?: number } = {},
+): { state: LoadState<AlertDeliveriesResponse>; refresh: () => void } {
+  const { demo } = useAuth();
+  const { state, refresh } = useApi<AlertDeliveriesResponse>(
+    demo ? null : (c, signal) => getAlertDeliveries(c, signal),
+    [],
+    opts,
+  );
+  const demoState = useMemo<LoadState<AlertDeliveriesResponse>>(
+    () => ({
+      status: "ok",
+      data: { deliveries: demoAlertDeliveries() },
+      loadedAt: NOW(),
+    }),
+    [],
+  );
+  if (demo) return { state: demoState, refresh };
+  return { state, refresh };
+}
+
+export function useEventDetail(
+  id: number | null,
+): { state: LoadState<EventDetailResponse>; refresh: () => void } {
+  const { demo } = useAuth();
+  const { state, refresh } = useApi<EventDetailResponse>(
+    !demo && id !== null ? (c, signal) => getEventDetail(c, id, signal) : null,
+    [id],
+  );
+  const demoState = useMemo<LoadState<EventDetailResponse>>(() => {
+    if (id === null) return { status: "idle" };
+    return {
+      status: "ok",
+      data: { event: demoEventDetail(id) },
+      loadedAt: NOW(),
+    };
+  }, [id]);
   if (demo) return { state: demoState, refresh };
   return { state, refresh };
 }
