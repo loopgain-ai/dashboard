@@ -16,8 +16,8 @@ const OUT_TOKENS_KEY = "loopgain-dashboard-cost-out-tokens";
 
 // Model pricing reference table. Rates are $ per million tokens (input / output).
 // Pricing last verified against public Anthropic, OpenAI, and Google pricing
-// pages on 2026-05-13. Re-verify before pilot conversations — public list
-// pricing shifts, and enterprise contracts may differ.
+// pages on 2026-05-13. Re-verify periodically — public list pricing shifts,
+// and enterprise contracts may differ.
 type ModelPresetId =
   | "claude-opus-4-7"
   | "claude-sonnet-4-6"

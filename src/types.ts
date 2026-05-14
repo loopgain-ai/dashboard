@@ -1,5 +1,5 @@
 // Telemetry receiver wire types.
-// Source of truth: ~/Developer/telemetry-receiver/src/index.ts + schema.sql.
+// Source of truth: the telemetry-receiver repo (src/index.ts + schema.sql).
 
 /** Outcome strings emitted by the LoopGain library when a run terminates. */
 export type Outcome =
