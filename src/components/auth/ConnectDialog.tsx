@@ -41,6 +41,20 @@ export function ConnectDialog({ open, onClose }: Props) {
       setError("Endpoint and token are both required.");
       return;
     }
+    // Reject anything other than https:// (or http:// on localhost for dev).
+    // The bearer token is sent in the Authorization header on every request;
+    // we refuse to attach it to a plaintext channel against a public host.
+    try {
+      const u = new URL(ep);
+      const isLocalhost = u.hostname === "localhost" || u.hostname === "127.0.0.1";
+      if (u.protocol !== "https:" && !(u.protocol === "http:" && isLocalhost)) {
+        setError("Endpoint must use https:// (http:// allowed only for localhost).");
+        return;
+      }
+    } catch {
+      setError("Endpoint must be a valid URL.");
+      return;
+    }
     setError(null);
     setBusy(true);
     try {

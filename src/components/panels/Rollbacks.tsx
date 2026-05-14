@@ -75,6 +75,17 @@ function RollbacksBody({
   }
 
   function exportCsv(): void {
+    // Excel/Sheets formula-prefix mitigation + RFC-4180 quoting. Telemetry-
+    // supplied strings (workload_id, outcome, library_version) are
+    // customer-controlled and may start with =/+/-/@ — without the
+    // single-quote prefix those open as live formulas in Excel.
+    const csvField = (v: unknown): string => {
+      let s = v == null ? "" : String(v);
+      if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+      if (/[",\r\n]/.test(s)) s = `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+
     const header = [
       "timestamp",
       "workload_id",
@@ -84,7 +95,9 @@ function RollbacksBody({
       "profile_max",
       "savings_vs_fixed_cap",
       "library_version",
-    ].join(",");
+    ]
+      .map(csvField)
+      .join(",");
     const lines = filtered.map((e) =>
       [
         fmtAbsTsExact(e.timestamp_hour),
@@ -95,7 +108,9 @@ function RollbacksBody({
         e.profile_max ?? "",
         e.savings_vs_fixed_cap ?? "",
         e.library_version,
-      ].join(","),
+      ]
+        .map(csvField)
+        .join(","),
     );
     const blob = new Blob([header + "\n" + lines.join("\n")], { type: "text/csv" });
     const url = URL.createObjectURL(blob);

@@ -94,13 +94,6 @@ export interface CalibrationResponse {
   events: CalibrationEvent[];
 }
 
-/** POST /v1/token/rotate response. The plain token is shown ONCE. */
-export interface RotateTokenResponse {
-  customer_id: string;
-  token: string;
-  rotated_at: number;
-}
-
 /** GET /health response. */
 export interface HealthResponse {
   status: "ok";

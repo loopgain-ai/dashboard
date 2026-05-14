@@ -20,7 +20,6 @@ import type {
   EventsResponse,
   HealthResponse,
   ProfilesResponse,
-  RotateTokenResponse,
   StatsResponse,
 } from "../types";
 
@@ -30,7 +29,27 @@ const DEMO_KEY = "loopgain-dashboard-demo";
 export function loadConfig(): Config | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Config) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Config;
+    // Defense-in-depth: refuse to rehydrate a config that points at a
+    // non-https endpoint (a stale config from before the scheme check was
+    // added, or a manually-edited localStorage entry). Drop it so the user
+    // is re-prompted via ConnectDialog with the up-to-date validation.
+    if (parsed && typeof parsed.endpoint === "string") {
+      try {
+        const u = new URL(parsed.endpoint);
+        const isLocalhost =
+          u.hostname === "localhost" || u.hostname === "127.0.0.1";
+        if (u.protocol !== "https:" && !(u.protocol === "http:" && isLocalhost)) {
+          localStorage.removeItem(STORAGE_KEY);
+          return null;
+        }
+      } catch {
+        localStorage.removeItem(STORAGE_KEY);
+        return null;
+      }
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -156,27 +175,6 @@ export function getCalibration(
   );
 }
 
-export async function rotateToken(c: Config): Promise<RotateTokenResponse> {
-  const url = buildUrl(c.endpoint, "/v1/token/rotate");
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${c.token}` },
-  });
-  if (!resp.ok) {
-    let body = "";
-    try {
-      body = await resp.text();
-    } catch {
-      /* noop */
-    }
-    throw new ApiError(
-      resp.status,
-      `HTTP ${resp.status} on /v1/token/rotate${body ? `: ${body}` : ""}`,
-    );
-  }
-  return (await resp.json()) as RotateTokenResponse;
-}
-
 // ── Auth context ──────────────────────────────────────────────────────
 
 export type ConnectionState =
@@ -193,13 +191,6 @@ export interface AuthCtx {
   connect: (c: Config) => Promise<void>;
   disconnect: () => void;
   ping: () => void;
-  /**
-   * Rotate the current bearer token. On success: returns the new plain token
-   * (shown ONCE to the user) and atomically updates the saved config so all
-   * subsequent requests use it. Throws on failure; the existing token stays
-   * active in that case.
-   */
-  rotate: () => Promise<RotateTokenResponse>;
 }
 
 export const AuthContext = createContext<AuthCtx | null>(null);
@@ -327,25 +318,13 @@ export function useAuthProvider(): AuthCtx {
       });
   }, [config]);
 
-  const rotate = useCallback(async (): Promise<RotateTokenResponse> => {
-    if (!config) throw new Error("not connected");
-    const resp = await rotateToken(config);
-    // Persist the new token immediately. The server already invalidated the
-    // old hash; if we don't save here, the user is locked out.
-    const next: Config = { endpoint: config.endpoint, token: resp.token };
-    saveConfig(next);
-    setConfig(next);
-    setConnection({ status: "connected", customerId: resp.customer_id });
-    return resp;
-  }, [config]);
-
   const setDemo = useCallback((on: boolean) => {
     setDemoFlag(on);
     setDemoState(on);
   }, []);
 
   return useMemo(
-    () => ({ config, demo, setDemo, connection, connect, disconnect, ping, rotate }),
-    [config, demo, setDemo, connection, connect, disconnect, ping, rotate],
+    () => ({ config, demo, setDemo, connection, connect, disconnect, ping }),
+    [config, demo, setDemo, connection, connect, disconnect, ping],
   );
 }

@@ -7,7 +7,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../lib/api";
 import { Chip, Icon, PanelHeader } from "../primitives";
-import { fmtAbsTsExact } from "../../lib/format";
 
 const RULES_KEY = "loopgain-dashboard-alert-rules";
 const PRESET_KEY = "loopgain-dashboard-cost-preset";
@@ -190,9 +189,7 @@ export function Settings({ costPerIter, setCostPerIter }: Props) {
         </div>
       </div>
 
-      {!demo && (
-        <RotateTokenCard connected={connection.status === "connected"} />
-      )}
+      {!demo && <RotateTokenNotice />}
 
       <CostPerIterCard costPerIter={costPerIter} setCostPerIter={setCostPerIter} />
 
@@ -522,259 +519,27 @@ function CostPerIterCard({
   );
 }
 
-// ── Rotate token ──────────────────────────────────────────────────────
+// ── Rotate token notice ───────────────────────────────────────────────
+//
+// Self-serve rotation over HTTP was removed (2026-05-14). A leaked token
+// would otherwise let an attacker rotate the credential and lock the
+// legitimate owner out without recourse. Rotation now happens operator-side
+// via the rotate-token.mjs script in the telemetry-receiver repo.
 
-type RotateState =
-  | { kind: "idle" }
-  | { kind: "confirming" }
-  | { kind: "rotating" }
-  | { kind: "success"; token: string; rotatedAt: number }
-  | { kind: "error"; message: string };
-
-function RotateTokenCard({ connected }: { connected: boolean }) {
-  const { rotate } = useAuth();
-  const [state, setState] = useState<RotateState>({ kind: "idle" });
-  const [copied, setCopied] = useState(false);
-
-  async function performRotate(): Promise<void> {
-    setState({ kind: "rotating" });
-    try {
-      const resp = await rotate();
-      setState({ kind: "success", token: resp.token, rotatedAt: resp.rotated_at });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setState({ kind: "error", message });
-    }
-  }
-
-  async function copyToken(token: string): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(token);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      /* clipboard may fail in iframes; user can copy the visible text */
-    }
-  }
-
-  function dismissSuccess(): void {
-    setState({ kind: "idle" });
-    setCopied(false);
-  }
-
+function RotateTokenNotice() {
   return (
     <div className="card" style={{ marginBottom: 16, padding: 18 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-          marginBottom: 8,
-        }}
-      >
-        <div className="label">Bearer token</div>
-        {state.kind === "idle" && (
-          <Chip
-            on={false}
-            onClick={() => setState({ kind: "confirming" })}
-            disabled={!connected}
-          >
-            Rotate token
-          </Chip>
-        )}
+      <div className="label" style={{ marginBottom: 8 }}>
+        Bearer token
       </div>
-
-      {state.kind === "idle" && (
-        <p style={{ fontSize: 12, color: "var(--text-3)", lineHeight: 1.5, margin: 0 }}>
-          Generate a fresh bearer token. The current token is revoked
-          immediately; any other client (Python library, CI, second browser) using
-          it must be updated to keep sending telemetry.
-          {!connected && (
-            <>
-              {" "}
-              <span className="mono" style={{ color: "var(--band-stall)" }}>
-                Connect first to rotate.
-              </span>
-            </>
-          )}
-        </p>
-      )}
-
-      {state.kind === "confirming" && (
-        <ConfirmBlock onCancel={() => setState({ kind: "idle" })} onConfirm={performRotate} />
-      )}
-
-      {state.kind === "rotating" && (
-        <div
-          className="mono"
-          style={{ fontSize: 12, color: "var(--text-3)", padding: "8px 0" }}
-        >
-          Rotating…
-        </div>
-      )}
-
-      {state.kind === "success" && (
-        <SuccessBlock
-          token={state.token}
-          rotatedAt={state.rotatedAt}
-          copied={copied}
-          onCopy={() => copyToken(state.token)}
-          onDismiss={dismissSuccess}
-        />
-      )}
-
-      {state.kind === "error" && (
-        <ErrorBlock
-          message={state.message}
-          onRetry={performRotate}
-          onCancel={() => setState({ kind: "idle" })}
-        />
-      )}
-    </div>
-  );
-}
-
-function ConfirmBlock({
-  onCancel,
-  onConfirm,
-}: {
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <div
-      style={{
-        padding: 12,
-        background: "color-mix(in oklab, var(--band-osc) 8%, transparent)",
-        border: "1px solid color-mix(in oklab, var(--band-osc) 30%, transparent)",
-        borderRadius: 5,
-        fontSize: 12.5,
-        color: "var(--text-2)",
-        lineHeight: 1.55,
-      }}
-    >
-      <div className="mono" style={{ color: "var(--band-osc)", marginBottom: 6 }}>
-        confirm rotation
-      </div>
-      <ul style={{ margin: "6px 0 12px 18px", padding: 0 }}>
-        <li>The current token stops working the instant this completes.</li>
-        <li>The new token is shown <strong>once</strong>; copy it before dismissing.</li>
-        <li>This browser's config will be updated automatically.</li>
-        <li>Other clients (Python library, CI, etc.) must be reconfigured with the new token.</li>
-      </ul>
-      <div style={{ display: "flex", gap: 8 }}>
-        <Chip onClick={onConfirm}>Yes, rotate now</Chip>
-        <Chip onClick={onCancel}>Cancel</Chip>
-      </div>
-    </div>
-  );
-}
-
-function SuccessBlock({
-  token,
-  rotatedAt,
-  copied,
-  onCopy,
-  onDismiss,
-}: {
-  token: string;
-  rotatedAt: number;
-  copied: boolean;
-  onCopy: () => void;
-  onDismiss: () => void;
-}) {
-  return (
-    <div
-      style={{
-        padding: 12,
-        background: "color-mix(in oklab, var(--band-conv) 8%, transparent)",
-        border: "1px solid color-mix(in oklab, var(--band-conv) 35%, transparent)",
-        borderRadius: 5,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          justifyContent: "space-between",
-          marginBottom: 8,
-        }}
-      >
-        <div className="mono" style={{ color: "var(--band-conv)", fontSize: 12 }}>
-          rotated · shown once
-        </div>
-        <div className="mono" style={{ color: "var(--text-3)", fontSize: 10.5 }}>
-          {fmtAbsTsExact(rotatedAt)}
-        </div>
-      </div>
-      <div
-        className="mono"
-        style={{
-          padding: "10px 12px",
-          background: "var(--surf-2)",
-          border: "1px solid var(--border)",
-          borderRadius: 5,
-          fontSize: 12,
-          color: "var(--text-1)",
-          wordBreak: "break-all",
-          userSelect: "all",
-        }}
-      >
-        {token}
-      </div>
-      <div
-        style={{
-          marginTop: 10,
-          fontSize: 11.5,
-          color: "var(--text-3)",
-          lineHeight: 1.5,
-        }}
-      >
-        This browser is already using the new token. Update other clients that
-        share this account before they next make a request.
-      </div>
-      <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-        <Chip onClick={onCopy}>{copied ? "Copied" : "Copy token"}</Chip>
-        <Chip onClick={onDismiss}>Done — hide token</Chip>
-      </div>
-    </div>
-  );
-}
-
-function ErrorBlock({
-  message,
-  onRetry,
-  onCancel,
-}: {
-  message: string;
-  onRetry: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div
-      style={{
-        padding: 12,
-        background: "color-mix(in oklab, var(--band-osc) 8%, transparent)",
-        border: "1px solid color-mix(in oklab, var(--band-osc) 30%, transparent)",
-        borderRadius: 5,
-        fontSize: 12.5,
-        color: "var(--text-2)",
-      }}
-    >
-      <div className="mono" style={{ color: "var(--band-osc)", marginBottom: 6 }}>
-        rotation failed
-      </div>
-      <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)", marginBottom: 10 }}>
-        {message}
-      </div>
-      <div style={{ fontSize: 11.5, color: "var(--text-3)", marginBottom: 10 }}>
-        Your current token is still active. Retry, or cancel and try again later.
-      </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <Chip onClick={onRetry}>Retry</Chip>
-        <Chip onClick={onCancel}>Cancel</Chip>
-      </div>
+      <p style={{ fontSize: 12, color: "var(--text-3)", lineHeight: 1.5, margin: 0 }}>
+        To rotate this account's token, email{" "}
+        <span className="mono" style={{ color: "var(--text-2)" }}>
+          hello@loopgain.ai
+        </span>
+        . Self-serve rotation over HTTP is intentionally disabled so a leaked
+        token can't be used to lock you out.
+      </p>
     </div>
   );
 }
