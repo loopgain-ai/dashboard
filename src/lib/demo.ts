@@ -28,10 +28,10 @@ const FRAMEWORK_BY_WORKLOAD: Record<string, string> = {
   "plan-critic-v3": "crewai",
   "summarize-eval": "langgraph",
   "unit-test-fix": "autogen",
-  "spec-refine-v2": "vesper",
+  "spec-refine-v2": "langgraph",
   "extract-validate": "langgraph",
   "translate-grade-jp": "crewai",
-  "agent-self-review": "vesper",
+  "agent-self-review": "autogen",
   "tilescope-rewrite": "autogen",
 };
 const LOOP_TYPE_BY_WORKLOAD: Record<string, string> = {
