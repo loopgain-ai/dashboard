@@ -72,14 +72,20 @@ npm run typecheck
 
 On first load with no configured endpoint the dashboard shows the empty state. Click **Use demo data** to explore against the synthetic fleet, or **Connect endpoint** to paste your receiver URL + bearer token.
 
-## Deploying to Cloudflare Pages
+## Deploying to Cloudflare
+
+Connected to Cloudflare via Git (Workers with static assets) — pushing to `main` auto-deploys. Production custom domain: `dashboard.loopgain.ai`.
+
+Cloudflare runs `npm run build` (which is `tsc --noEmit && vite build`) and then `npx wrangler deploy`; the `wrangler.jsonc` in this repo declares `dist/` as the asset directory and enables SPA fallback. `.nvmrc` pins Node 22 so the build env matches local.
+
+For a one-off manual deploy from local:
 
 ```bash
 npm run build
-npx wrangler pages deploy dist --project-name=loopgain-dashboard
+npx wrangler deploy
 ```
 
-Point your DNS (e.g., `dashboard.loopgain.ai`) at the Pages project; TLS is automatic.
+TLS is automatic on Cloudflare-managed custom domains.
 
 ## Connecting to a receiver
 

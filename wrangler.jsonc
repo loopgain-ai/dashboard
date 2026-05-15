@@ -1,0 +1,25 @@
+{
+  // Cloudflare Worker config for the LoopGain dashboard.
+  //
+  // Deployed as a Workers-with-static-assets project: no Worker script,
+  // just the Vite-built `dist/` directory. The build step (npm run build,
+  // which is `tsc --noEmit && vite build`) is configured in Cloudflare's
+  // Pages/Worker UI, not here — wrangler.jsonc just describes WHICH
+  // files to upload after that build runs.
+  //
+  // `_headers` (security headers — CSP, HSTS, etc.) lives at
+  // public/_headers; Vite copies it to dist/_headers on build, and
+  // Cloudflare honors it as response-header config (not a static asset).
+  //
+  // `not_found_handling: "single-page-application"` returns index.html
+  // (with 200 status) for any request that doesn't match a built asset,
+  // so deep links / panel switches / browser refreshes work correctly
+  // when (or if) the dashboard adopts client-side routing.
+  "$schema": "https://json.schemastore.org/wrangler.json",
+  "name": "loopgain-dashboard",
+  "compatibility_date": "2026-05-15",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}
