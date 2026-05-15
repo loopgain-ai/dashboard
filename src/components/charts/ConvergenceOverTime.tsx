@@ -199,6 +199,20 @@ export function ConvergenceOverTime({
       >
         TIME
       </text>
+      {/* Rolling median renders BEFORE the points so the points sit on top.
+          30% stroke opacity so the trend stays readable without competing
+          with the band-colored data. */}
+      {trendPath && (
+        <path
+          d={trendPath}
+          fill="none"
+          stroke="var(--accent)"
+          strokeOpacity={0.3}
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      )}
       {events.map((e, i) => {
         if (e.profile_median == null) return null;
         const band = bandFromProfileEvent(e);
@@ -213,16 +227,6 @@ export function ConvergenceOverTime({
           />
         );
       })}
-      {trendPath && (
-        <path
-          d={trendPath}
-          fill="none"
-          stroke="var(--accent)"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      )}
     </svg>
   );
 }
