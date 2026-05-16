@@ -145,7 +145,7 @@ function buildFleet(): SyntheticEvent[] {
   const now = Math.floor(Date.now() / 3600_000) * 3600;
   const events: SyntheticEvent[] = [];
 
-  for (let i = 0; i < 380; i++) {
+  for (let i = 0; i < 3000; i++) {
     const outcome = pickOutcome(rng);
     const workload = WORKLOADS[Math.floor(rng() * WORKLOADS.length)]!;
     const hoursBack = Math.floor(rng() * 30 * 24);
@@ -342,7 +342,7 @@ export function demoProfiles(
   return {
     customer_id: "demo-customer",
     workload_id: opts.workloadId ?? null,
-    events: evs.slice(0, 1000).map((e) => ({
+    events: evs.slice(0, 3500).map((e) => ({
       id: e.id,
       timestamp_hour: e.timestamp_hour,
       workload_id: opts.workloadId ? undefined : e.workload_id,
@@ -378,7 +378,7 @@ export function demoEvents(
   if (opts.rollbacksOnly) evs = evs.filter((e) => e.rollback_triggered);
   return {
     customer_id: "demo-customer",
-    events: evs.slice(0, 500).map((e) => ({
+    events: evs.slice(0, 3500).map((e) => ({
       id: e.id,
       timestamp_hour: e.timestamp_hour,
       workload_id: e.workload_id,
@@ -421,7 +421,7 @@ export function demoCalibration(
   return {
     customer_id: "demo-customer",
     workload_id: opts.workloadId ?? null,
-    events: filtered.slice(0, 1000).map((e) => ({
+    events: filtered.slice(0, 3500).map((e) => ({
       id: e.id,
       timestamp_hour: e.timestamp_hour,
       workload_id: e.workload_id,

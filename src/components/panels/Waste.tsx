@@ -13,6 +13,13 @@ import { Loaded } from "./PanelState";
 import { fmtUSD, fmtInt } from "../../lib/format";
 import type { LoopEvent, StatsResponse } from "../../types";
 
+const OUTCOME_COLOR: Record<string, string> = {
+  converged: "var(--band-conv)",
+  diverged: "var(--band-div)",
+  oscillating: "var(--band-osc)",
+  max_iterations: "var(--band-stall)",
+};
+
 interface Props {
   costPerIter: number;
   setCostPerIter: (n: number) => void;
@@ -277,8 +284,8 @@ function WasteBody({
 
       <div className="waste-breakdowns">
         {[
-          { title: "By workload", rows: byWorkload },
-          { title: "By outcome", rows: byOutcome },
+          { title: "By workload", rows: byWorkload, byOutcome: false },
+          { title: "By outcome", rows: byOutcome, byOutcome: true },
         ].map((b) => (
           <div key={b.title} className="card">
             <div className="card-h">
@@ -292,7 +299,7 @@ function WasteBody({
                 rows={b.rows.slice(0, 10).map((r) => ({
                   label: r.label,
                   value: r.value,
-                  color: "var(--accent)",
+                  color: b.byOutcome ? OUTCOME_COLOR[r.label] ?? "var(--accent)" : "var(--accent)",
                 }))}
                 valueFmt={(v) => fmtUSD(v)}
               />

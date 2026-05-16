@@ -49,7 +49,7 @@ function loadDensity(): Density {
 }
 function loadCost(): number {
   const v = Number(localStorage.getItem(COST_KEY));
-  return Number.isFinite(v) && v > 0 ? v : 0.05;
+  return Number.isFinite(v) && v > 0 ? v : 0.08;
 }
 
 export function App() {
