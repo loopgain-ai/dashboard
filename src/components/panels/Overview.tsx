@@ -1,15 +1,17 @@
 // Overview — fleet health at a glance, computed from real /v1/stats + /v1/events.
 
-import { useMemo } from "react";
-import { useEvents, useStats } from "../../lib/data-hooks";
+import { useMemo, type ReactNode } from "react";
+import { useEventDetail, useEvents, useStats } from "../../lib/data-hooks";
 import { BANDS, BAND_COLOR, bandFromEvent } from "../../lib/bands";
 import { fmtRel, fmtTime, fmtUSD, fmtInt } from "../../lib/format";
 import { median, percentile } from "../../lib/stats";
 import { Chip, Icon, KPI, PanelHeader, StatePill } from "../primitives";
-import { RingGauge, Sparkline } from "../charts";
+import { RingGauge, Sparkline, TrajectoryChart } from "../charts";
 import { Loaded } from "./PanelState";
+import { loopRouteId } from "../shell/routes";
 import type { RouteId, TimeRange } from "../shell";
-import type { Band, LoopEvent, StatsResponse } from "../../types";
+import type { LoadState } from "../../lib/api";
+import type { Band, EventDetailResponse, LoopEvent, StatsResponse } from "../../types";
 
 interface Props {
   setRoute: (r: RouteId) => void;
@@ -113,6 +115,22 @@ function OverviewBody({
   }, [events]);
 
   const attentionCount = bandCounts.OSCILLATING + bandCounts.DIVERGING;
+
+  // Latest-trajectory selection. Prefer the most recent attention-worthy
+  // run (OSCILLATING / DIVERGING) so an operator opens to the run they'd
+  // actually want to look at; fall back to most-recent-with-id when the
+  // fleet is healthy. v1/v2-era events without ids are skipped — the
+  // trajectory fetch requires /v1/event/:id.
+  const trajectoryEvent = useMemo<LoopEvent | null>(() => {
+    const withId = events.filter((e) => e.id != null);
+    if (withId.length === 0) return null;
+    const attention = withId.find((e) => {
+      const band = bandFromEvent(e);
+      return band === "OSCILLATING" || band === "DIVERGING";
+    });
+    return attention ?? withId[0] ?? null;
+  }, [events]);
+  const trajectoryDetail = useEventDetail(trajectoryEvent?.id ?? null);
 
   return (
     <>
@@ -257,6 +275,53 @@ function OverviewBody({
               />
             </div>
           </div>
+        </div>
+
+        <div
+          className="card span-12"
+          style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12 }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+              <h3 style={{ margin: 0, fontSize: 13, fontWeight: 500 }}>
+                Latest run trajectory
+              </h3>
+              {trajectoryEvent && (
+                <StatePill band={bandFromEvent(trajectoryEvent)} size="sm" />
+              )}
+              {trajectoryEvent && (
+                <span
+                  className="mono"
+                  style={{ fontSize: 11, color: "var(--text-3)" }}
+                >
+                  {trajectoryEvent.workload_id ?? "—"} · {fmtRel(trajectoryEvent.timestamp_hour * 1000)}
+                </span>
+              )}
+            </div>
+            {trajectoryEvent?.workload_id && (
+              <button
+                type="button"
+                className="chip"
+                onClick={() =>
+                  setRoute(loopRouteId(trajectoryEvent.workload_id as string))
+                }
+                style={{ background: "var(--surf-2)", whiteSpace: "nowrap" }}
+              >
+                Open in Loop Detail <Icon.Chevron />
+              </button>
+            )}
+          </div>
+          <TrajectoryCardBody
+            detailState={trajectoryDetail.state}
+            hasCandidate={trajectoryEvent != null}
+          />
         </div>
 
         <div
@@ -423,5 +488,72 @@ function OverviewBody({
         })}
       </div>
     </>
+  );
+}
+
+function TrajectoryCardBody({
+  detailState,
+  hasCandidate,
+}: {
+  detailState: LoadState<EventDetailResponse>;
+  hasCandidate: boolean;
+}) {
+  if (!hasCandidate) {
+    return (
+      <TrajectoryEmpty>
+        No recent runs with per-iteration data. Trajectories require
+        loopgain ≥ 0.1.6 reporting events.
+      </TrajectoryEmpty>
+    );
+  }
+
+  const event =
+    detailState.status === "ok"
+      ? detailState.data.event
+      : detailState.status === "loading" && detailState.previous
+      ? detailState.previous.event
+      : detailState.status === "error" && detailState.previous
+      ? detailState.previous.event
+      : null;
+
+  if (detailState.status === "error" && !event) {
+    return (
+      <TrajectoryEmpty>
+        Couldn't load trajectory: {detailState.error.message}
+      </TrajectoryEmpty>
+    );
+  }
+  if (!event) {
+    // loading without a previous payload — keep the slot a stable height.
+    return <div style={{ height: 220 }} />;
+  }
+  if (!event.per_iteration) {
+    return (
+      <TrajectoryEmpty>
+        This run was reported as a summary (library {event.library_version}).
+        Per-iteration trajectories require loopgain ≥ 0.1.6.
+      </TrajectoryEmpty>
+    );
+  }
+  return <TrajectoryChart pit={event.per_iteration} />;
+}
+
+function TrajectoryEmpty({ children }: { children: ReactNode }) {
+  return (
+    <div
+      style={{
+        height: 220,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "var(--text-3)",
+        fontSize: 12,
+        textAlign: "center",
+        padding: "0 24px",
+        lineHeight: 1.5,
+      }}
+    >
+      {children}
+    </div>
   );
 }

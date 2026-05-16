@@ -4,3 +4,4 @@ export { HBar } from "./HBar";
 export { Histogram } from "./Histogram";
 export { RingGauge } from "./RingGauge";
 export { Sparkline } from "./Sparkline";
+export { TrajectoryChart } from "./TrajectoryChart";
