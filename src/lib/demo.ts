@@ -91,10 +91,11 @@ const WORKLOADS = [
 ];
 
 const OUTCOMES: Array<{ o: Outcome; w: number }> = [
-  { o: "converged", w: 0.66 },
-  { o: "oscillating", w: 0.10 },
-  { o: "diverged", w: 0.07 },
-  { o: "max_iterations", w: 0.17 },
+  { o: "converged", w: 0.62 },
+  { o: "stalled", w: 0.12 },       // v0.2: trajectory classifier — 2+ consecutive STALLING
+  { o: "oscillating", w: 0.08 },
+  { o: "diverged", w: 0.06 },
+  { o: "max_iterations", w: 0.12 },
 ];
 
 function pickOutcome(rng: () => number): Outcome {
@@ -184,6 +185,16 @@ function buildFleet(): SyntheticEvent[] {
         iters = 4 + Math.floor(rng() * 5);
         gm = 1 / pMax;
         break;
+      case "stalled":
+        // v0.2 trajectory classifier: no significant slope, no oscillation,
+        // 2+ consecutive STALLING readings. Aβ hovers in the [0.85, 0.95]
+        // band without statistically significant motion.
+        pMin = 0.82 + rng() * 0.06;
+        pMax = 0.92 + rng() * 0.05;
+        pMed = 0.88 + rng() * 0.04;
+        iters = 4 + Math.floor(rng() * 5);
+        gm = 1 / pMax;
+        break;
       default:
         pMin = 0.3;
         pMed = 0.5;
@@ -192,7 +203,10 @@ function buildFleet(): SyntheticEvent[] {
         gm = 1.4;
     }
     const savings = Math.max(0, 16 - iters);
-    const rollback = outcome === "diverged" || (outcome === "oscillating" && rng() < 0.6);
+    const rollback =
+      outcome === "diverged" ||
+      (outcome === "oscillating" && rng() < 0.6) ||
+      (outcome === "stalled" && rng() < 0.3);  // v0.2: stalled returns best-so-far
 
     // Only converged loops carry a captured eta snapshot. Predicted total
     // = at_iteration + remaining; should match iterations_used plus the
@@ -242,6 +256,7 @@ function buildPerIteration(e: SyntheticEvent): PerIteration {
   const targetAB =
     e.outcome === "converged" ? Math.max(0.2, e.profile_median ?? 0.4) :
     e.outcome === "max_iterations" ? Math.max(0.6, e.profile_median ?? 0.7) :
+    e.outcome === "stalled" ? Math.max(0.88, e.profile_median ?? 0.92) :
     e.outcome === "oscillating" ? 0.97 :
     1.08; // diverged
   let err = 1.0;

@@ -200,15 +200,15 @@ function ConvergenceBody({
 
       <div className="card" style={{ marginTop: 16 }}>
         <div className="card-h">
-          <h3>Band thresholds</h3>
+          <h3>State classifier</h3>
         </div>
         <div style={{ padding: "4px 0" }}>
           {[
-            { id: "FAST_CONVERGE" as const, range: "Aβ < 0.30", desc: "Strong contraction. Halt early if budget-bound." },
-            { id: "CONVERGING" as const, range: "0.30 ≤ Aβ < 0.85", desc: "Healthy convergence. Continue." },
-            { id: "STALLING" as const, range: "0.85 ≤ Aβ < 0.95", desc: "Marginal returns. Inspect critic prompt." },
-            { id: "OSCILLATING" as const, range: "0.95 ≤ Aβ ≤ 1.05", desc: "No net error reduction. Rollback armed." },
-            { id: "DIVERGING" as const, range: "Aβ > 1.05", desc: "Error growing. Roll back to best-so-far." },
+            { id: "FAST_CONVERGE" as const, range: "cumulative E ≤ 10%", desc: "Strong contraction. Halt early if budget-bound." },
+            { id: "CONVERGING" as const, range: "trend < 0, p < 0.05", desc: "Healthy convergence. Continue." },
+            { id: "STALLING" as const, range: "no trend, no oscillation", desc: "No progress. Stops after 2 consecutive readings." },
+            { id: "OSCILLATING" as const, range: "high variance, flat trend", desc: "No net error reduction. Rollback armed." },
+            { id: "DIVERGING" as const, range: "trend > 0, p < 0.05, cumul > 110%", desc: "Error growing. Roll back to best-so-far." },
           ].map((b, i) => (
             <div
               key={b.id}

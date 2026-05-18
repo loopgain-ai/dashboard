@@ -1,11 +1,18 @@
 // Telemetry receiver wire types.
 // Source of truth: the telemetry-receiver repo (src/index.ts + schema.sql).
 
-/** Outcome strings emitted by the LoopGain library when a run terminates. */
+/** Outcome strings emitted by the LoopGain library when a run terminates.
+ *
+ * "stalled" was added in loopgain-core v0.2 (trajectory classifier). It
+ * means the trajectory classifier saw two-or-more consecutive STALLING
+ * readings and terminated — "stuck but not flapping," distinct from the
+ * actively-unstable "oscillating" outcome.
+ */
 export type Outcome =
   | "converged"
   | "oscillating"
   | "diverged"
+  | "stalled"
   | "max_iterations"
   // Future-proof: anything else is rendered as "unknown".
   | (string & {});

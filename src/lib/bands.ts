@@ -60,6 +60,8 @@ export function bandFromEvent(
       return "OSCILLATING";
     case "diverged":
       return "DIVERGING";
+    case "stalled":
+      return "STALLING";
     case "max_iterations":
       return "STALLING";
     default:
@@ -82,6 +84,7 @@ export function outcomeLabel(o: Outcome): string {
     case "converged": return "converged";
     case "oscillating": return "oscillating";
     case "diverged": return "diverged";
+    case "stalled": return "stalled";
     case "max_iterations": return "max iter";
     default: return String(o);
   }
