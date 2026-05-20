@@ -269,6 +269,24 @@ function AppInner() {
           )}
           <span style={{ flex: 1 }} />
           <span>
+            <a
+              href="https://loopgain.ai/privacy"
+              target="_blank"
+              rel="noopener"
+              style={{ color: "var(--text-3)", textDecoration: "none" }}
+            >
+              privacy
+            </a>{" "}
+            ·{" "}
+            <a
+              href="https://loopgain.ai/terms"
+              target="_blank"
+              rel="noopener"
+              style={{ color: "var(--text-3)", textDecoration: "none" }}
+            >
+              terms
+            </a>{" "}
+            ·{" "}
             <span className="kbd">g</span> <span className="kbd">h</span> health ·{" "}
             <span className="kbd">⌘</span>
             <span className="kbd">K</span> palette
