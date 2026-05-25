@@ -166,15 +166,75 @@ function OverviewBody({
   };
   const savedDollars = totals.total_savings * costPerIter;
 
-  // 24h fleet pulse: bucket recent events by hour, plot count.
+  // Fleet pulse: bucket events by time. Two modes.
+  //   rolling-24h (default): the panel's original behavior — 24 hourly
+  //     buckets anchored to "now", reads as a "last 24h" sparkline.
+  //   autowiden (stale data): when the most-recent event is more than 24h
+  //     old, the rolling-24h chart is mathematically zero across the whole
+  //     window. Switch to round-number buckets spanning [earliest, latest]
+  //     so a viewer sees the actual upload pattern instead of a flat line.
+  //     The /benchmark route hits this path: bench data is static, days old.
+  //
+  // Bucketing uses `timestamp_hour` (unix seconds at the hour the event
+  // was attributed to by the library — already truncated to the hour).
   const fleetPulse = useMemo(() => {
-    const buckets = new Array(24).fill(0) as number[];
-    const now = Math.floor(Date.now() / 1000);
+    const STALE_AFTER_S = 24 * 3600;
+    const nowS = Math.floor(Date.now() / 1000);
+
+    // Find the most-recent event timestamp; fall back to rolling-24h if
+    // there are no events at all (no point auto-widening empty).
+    let latest = 0;
+    let earliest = Number.POSITIVE_INFINITY;
     for (const e of events) {
-      const hoursAgo = Math.floor((now - e.timestamp_hour) / 3600);
-      if (hoursAgo >= 0 && hoursAgo < 24) buckets[23 - hoursAgo]!++;
+      if (e.timestamp_hour > latest) latest = e.timestamp_hour;
+      if (e.timestamp_hour < earliest) earliest = e.timestamp_hour;
     }
-    return buckets;
+    const isStale = events.length > 0 && nowS - latest > STALE_AFTER_S;
+
+    if (!isStale) {
+      // Original: 24 hourly buckets ending at "now".
+      const buckets = new Array(24).fill(0) as number[];
+      for (const e of events) {
+        const hoursAgo = Math.floor((nowS - e.timestamp_hour) / 3600);
+        if (hoursAgo >= 0 && hoursAgo < 24) buckets[23 - hoursAgo]!++;
+      }
+      return {
+        mode: "rolling-24h" as const,
+        buckets,
+        bucketHours: 1,
+        label: "24h fleet pulse · loop events / hour",
+        caption: null as string | null,
+      };
+    }
+
+    // Auto-widen: pick a round bucket size so the row of bars has
+    // 8-24 buckets across the actual data span.
+    const spanS = Math.max(latest - earliest, 3600); // at least 1h
+    const spanH = spanS / 3600;
+    // Round bucket sizes that read cleanly in the caption.
+    const bucketHours =
+      spanH <= 48 ? 4
+        : spanH <= 168 ? 12 // 7d
+        : spanH <= 720 ? 24 // 30d
+        : 72;
+    const bucketCount = Math.max(1, Math.ceil(spanH / bucketHours));
+    const buckets = new Array(bucketCount).fill(0) as number[];
+    const startS = latest - bucketCount * bucketHours * 3600;
+    for (const e of events) {
+      const offsetS = e.timestamp_hour - startS;
+      const idx = Math.floor(offsetS / (bucketHours * 3600));
+      if (idx >= 0 && idx < bucketCount) buckets[idx]!++;
+    }
+    const spanLabel =
+      spanH < 48 ? `${Math.round(spanH)}h`
+        : `${Math.round(spanH / 24)}d`;
+    return {
+      mode: "autowiden" as const,
+      buckets,
+      bucketHours,
+      label: `Recent activity · ${bucketHours}h buckets`,
+      caption: `data window: most recent ${spanLabel} · ${bucketCount} buckets`,
+    };
   }, [events]);
 
   // Recent transitions: 8 most recent events with their classified band.
@@ -345,18 +405,30 @@ function OverviewBody({
                 alignItems: "baseline",
               }}
             >
-              <div className="label">24h fleet pulse · loop events / hour</div>
+              <div className="label">{fleetPulse.label}</div>
               <div className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>
-                peak <span style={{ color: "var(--text-1)" }}>{Math.max(...fleetPulse)}</span>
+                peak <span style={{ color: "var(--text-1)" }}>{Math.max(...fleetPulse.buckets)}</span>
                 {" · total "}
                 <span style={{ color: "var(--text-1)" }}>
-                  {fleetPulse.reduce((s, v) => s + v, 0)}
+                  {fleetPulse.buckets.reduce((s, v) => s + v, 0)}
                 </span>
               </div>
             </div>
+            {fleetPulse.caption && (
+              <div
+                className="mono"
+                style={{
+                  marginTop: 4,
+                  fontSize: 10,
+                  color: "var(--text-3)",
+                }}
+              >
+                {fleetPulse.caption}
+              </div>
+            )}
             <div style={{ marginTop: 10 }}>
               <Sparkline
-                data={fleetPulse}
+                data={fleetPulse.buckets}
                 width={680}
                 height={88}
                 color="var(--accent)"
