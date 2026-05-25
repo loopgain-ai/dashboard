@@ -73,7 +73,15 @@ function OverviewBody({
     for (const b of bands) c[b]++;
     return c;
   }, [bands]);
-  const total = events.length;
+  // `sampleSize` = how many events came back from /v1/events (LIMIT 500 on
+  // the receiver). `totalEvents` = the true tenant-wide count from /v1/stats.
+  // Bands are classified client-side from per-loop `profile_max`, which only
+  // comes back via /events — so band counts are sample-derived. Use
+  // `totalEvents` for the headline number so customers with >500 runs in
+  // window see their real volume, not the sample cap.
+  const sampleSize = events.length;
+  const totalEvents = stats.totals?.event_count ?? sampleSize;
+  const isSampled = totalEvents > sampleSize;
 
   // Aβ_median across recent events. Use profile_max as the per-loop Aβ_smooth
   // proxy (the loop's worst point), then take the fleet median of those.
@@ -162,13 +170,16 @@ function OverviewBody({
         >
           <div style={{ display: "flex", justifyContent: "center", paddingTop: 8 }}>
             <div style={{ width: "100%", maxWidth: 240, aspectRatio: "1 / 1" }}>
-              <RingGauge value={abMedian} sub={`across ${total} loop events`} />
+              <RingGauge
+                value={abMedian}
+                sub={`across ${fmtInt(totalEvents)} loop events`}
+              />
             </div>
           </div>
           <div className="band-strip">
             {BANDS.map((b) => {
               const count = bandCounts[b.id];
-              const pct = total > 0 ? (count / total) * 100 : 0;
+              const pct = sampleSize > 0 ? (count / sampleSize) * 100 : 0;
               return (
                 <div key={b.id} className="band-cell">
                   <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}>
@@ -193,6 +204,19 @@ function OverviewBody({
               );
             })}
           </div>
+          {isSampled && (
+            <div
+              className="mono"
+              style={{
+                fontSize: 10,
+                color: "var(--text-3)",
+                textAlign: "center",
+                marginTop: -6,
+              }}
+            >
+              band breakdown · most recent {fmtInt(sampleSize)} of {fmtInt(totalEvents)}
+            </div>
+          )}
         </div>
 
         <div
@@ -418,7 +442,9 @@ function OverviewBody({
             route: "health-map" as const,
             icon: "Map" as const,
             title: "Loop Health Map",
-            desc: `${total} recent loops · ${attentionCount} need attention`,
+            desc: isSampled
+              ? `${fmtInt(totalEvents)} loops · ${attentionCount} attention in recent ${fmtInt(sampleSize)}`
+              : `${fmtInt(totalEvents)} recent loops · ${attentionCount} need attention`,
             badge: bandCounts.DIVERGING > 0 ? "div" : null,
           },
           {
