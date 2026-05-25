@@ -67,7 +67,18 @@ function WasteBody({
     total_savings: 0,
     rollbacks: 0,
   };
-  const saved = totals.total_savings * costPerIter;
+  // Match the Overview Spotlight: prefer the receiver's real paired-baseline
+  // SUM(actual_dollars_saved) when available (currently: bench tenant);
+  // fall back to iters × $/iter extrapolation otherwise. Counterfactual /
+  // breakdown series stay on the extrapolation path because they need
+  // per-event resolution and the event payload has savings_vs_fixed_cap,
+  // not per-event actual dollars.
+  const hasActualSavings =
+    typeof totals.total_actual_dollars_saved === "number" &&
+    Number.isFinite(totals.total_actual_dollars_saved);
+  const saved = hasActualSavings
+    ? (totals.total_actual_dollars_saved as number)
+    : totals.total_savings * costPerIter;
   const counterfactual = (totals.total_iterations + totals.total_savings) * costPerIter;
   const actualSpend = totals.total_iterations * costPerIter;
 
@@ -200,7 +211,7 @@ function WasteBody({
               marginTop: 8,
             }}
           >
-            {fmtUSD(saved, { cents: false })}
+            {fmtUSD(saved, { cents: hasActualSavings })}
           </div>
           <div
             style={{

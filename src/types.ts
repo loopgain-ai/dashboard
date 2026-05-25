@@ -36,6 +36,15 @@ export interface StatsResponse {
     total_iterations: number;
     total_savings: number;
     rollbacks: number;
+    /** Sum of actual_dollars_saved across matched events. NULL when no
+     *  events have it populated. Receiver v3.1+ only — older receivers
+     *  omit the field entirely, in which case the dashboard falls back
+     *  to total_savings × costPerIter. The bench tenant populates it
+     *  because it has paired B20/LG baseline cost data; ordinary
+     *  customers don't. */
+    total_actual_dollars_saved?: number | null;
+    /** Count of events with actual_dollars_saved populated. */
+    event_count_with_actual_savings?: number;
   } | null;
   workloads: Array<{ workload_id: string | null; count: number }>;
   // Schema v3: distinct values for the classification fields, used to

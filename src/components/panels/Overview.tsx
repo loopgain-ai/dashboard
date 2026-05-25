@@ -164,7 +164,18 @@ function OverviewBody({
     total_savings: 0,
     rollbacks: 0,
   };
-  const savedDollars = totals.total_savings * costPerIter;
+  // Prefer the receiver's SUM(actual_dollars_saved) when present — that's
+  // the tenant's real, measured paired-baseline delta (bench has this from
+  // running every workload under B20 and LG). For tenants without paired
+  // data, fall back to iter-count × $/iter extrapolation. The bench's old
+  // ~$835 number was the extrapolation; the real measured savings is
+  // ~$25.81 — without this branch the dashboard contradicts the landing.
+  const hasActualSavings =
+    typeof totals.total_actual_dollars_saved === "number" &&
+    Number.isFinite(totals.total_actual_dollars_saved);
+  const savedDollars = hasActualSavings
+    ? (totals.total_actual_dollars_saved as number)
+    : totals.total_savings * costPerIter;
 
   // Fleet pulse: bucket events by time. Two modes.
   //   rolling-24h (default): the panel's original behavior — 24 hourly
@@ -383,7 +394,7 @@ function OverviewBody({
                 lineHeight: 1,
               }}
             >
-              {fmtUSD(savedDollars, { cents: false })}
+              {fmtUSD(savedDollars, { cents: hasActualSavings })}
             </div>
             <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-2)" }}>
               {fmtInt(totals.total_savings)} iterations saved · {fmtInt(totals.rollbacks)} rollbacks
