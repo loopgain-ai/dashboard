@@ -1,15 +1,28 @@
-// Higher-level data hooks. Each returns the typed response in either
-// "live" mode (real receiver) or "demo" mode (synthetic fleet).
+// Higher-level data hooks. Each returns the typed response in one of
+// three modes:
+//   - live  → real receiver via authed `/v1/*` endpoints
+//   - demo  → synthetic fleet from src/lib/demo.ts (offline)
+//   - bench → public `/v1/public/benchmark/*` endpoints, scoped on the
+//             receiver side to the hardcoded canonical bench tenant.
+// Bench-mode is set when the dashboard is mounted at `/benchmark`; see
+// `isBenchPath` + AuthCtx.bench in src/lib/api.ts.
 
 import { useMemo } from "react";
 import {
   getAlertDeliveries,
+  getAlertDeliveriesBench,
   getAlertRules,
+  getAlertRulesBench,
   getCalibration,
+  getCalibrationBench,
   getEventDetail,
+  getEventDetailBench,
   getEvents,
+  getEventsBench,
   getProfiles,
+  getProfilesBench,
   getStats,
+  getStatsBench,
   useApi,
   useAuth,
   type LoadState,
@@ -40,11 +53,11 @@ export function useStats(opts: { pollMs?: number } = {}): {
   state: LoadState<StatsResponse>;
   refresh: () => void;
 } {
-  const { demo } = useAuth();
+  const { demo, bench } = useAuth();
   const { state, refresh } = useApi<StatsResponse>(
-    demo ? null : (c, signal) => getStats(c, signal),
+    demo || bench ? null : (c, signal) => getStats(c, signal),
     [],
-    opts,
+    { ...opts, benchLoader: bench ? (signal) => getStatsBench(signal) : undefined },
   );
   const demoState = useMemo<LoadState<StatsResponse>>(
     () => ({ status: "ok", data: demoStats(), loadedAt: NOW() }),
@@ -57,13 +70,13 @@ export function useStats(opts: { pollMs?: number } = {}): {
 export function useProfiles(
   opts: { workloadId?: string; sinceHours?: number; pollMs?: number } = {},
 ): { state: LoadState<ProfilesResponse>; refresh: () => void } {
-  const { demo } = useAuth();
+  const { demo, bench } = useAuth();
   const { filters } = useFilters();
   // workloadId from props overrides the global filter (used by Loop Detail
   // to pin to a single workload regardless of the filter bar).
   const effectiveWorkload = opts.workloadId ?? filters.workload_id;
   const { state, refresh } = useApi<ProfilesResponse>(
-    demo
+    demo || bench
       ? null
       : (c, signal) =>
           getProfiles(
@@ -84,7 +97,22 @@ export function useProfiles(
       filters.loop_type,
       filters.team,
     ],
-    { pollMs: opts.pollMs },
+    {
+      pollMs: opts.pollMs,
+      benchLoader: bench
+        ? (signal) =>
+            getProfilesBench(
+              {
+                workloadId: effectiveWorkload,
+                sinceHours: opts.sinceHours,
+                framework: filters.framework,
+                loop_type: filters.loop_type,
+                team: filters.team,
+              },
+              signal,
+            )
+        : undefined,
+    },
   );
   const demoState = useMemo<LoadState<ProfilesResponse>>(
     () => ({
@@ -113,10 +141,10 @@ export function useProfiles(
 export function useEvents(
   opts: { rollbacksOnly?: boolean; sinceHours?: number; pollMs?: number } = {},
 ): { state: LoadState<EventsResponse>; refresh: () => void } {
-  const { demo } = useAuth();
+  const { demo, bench } = useAuth();
   const { filters } = useFilters();
   const { state, refresh } = useApi<EventsResponse>(
-    demo
+    demo || bench
       ? null
       : (c, signal) =>
           getEvents(
@@ -137,7 +165,22 @@ export function useEvents(
       filters.team,
       filters.workload_id,
     ],
-    { pollMs: opts.pollMs },
+    {
+      pollMs: opts.pollMs,
+      benchLoader: bench
+        ? (signal) =>
+            getEventsBench(
+              {
+                rollbacksOnly: opts.rollbacksOnly,
+                framework: filters.framework,
+                loop_type: filters.loop_type,
+                team: filters.team,
+                workload_id: filters.workload_id,
+              },
+              signal,
+            )
+        : undefined,
+    },
   );
   const demoState = useMemo<LoadState<EventsResponse>>(
     () => ({
@@ -182,11 +225,11 @@ export function useEvents(
 export function useCalibration(
   opts: { workloadId?: string; sinceHours?: number; pollMs?: number } = {},
 ): { state: LoadState<CalibrationResponse>; refresh: () => void } {
-  const { demo } = useAuth();
+  const { demo, bench } = useAuth();
   const { filters } = useFilters();
   const effectiveWorkload = opts.workloadId ?? filters.workload_id;
   const { state, refresh } = useApi<CalibrationResponse>(
-    demo
+    demo || bench
       ? null
       : (c, signal) =>
           getCalibration(
@@ -207,6 +250,21 @@ export function useCalibration(
       filters.loop_type,
       filters.team,
     ],
+    {
+      benchLoader: bench
+        ? (signal) =>
+            getCalibrationBench(
+              {
+                workloadId: effectiveWorkload,
+                sinceHours: opts.sinceHours,
+                framework: filters.framework,
+                loop_type: filters.loop_type,
+                team: filters.team,
+              },
+              signal,
+            )
+        : undefined,
+    },
   );
   const demoState = useMemo<LoadState<CalibrationResponse>>(
     () => ({
@@ -235,11 +293,14 @@ export function useCalibration(
 export function useAlertRules(
   opts: { pollMs?: number; refreshTrigger?: number } = {},
 ): { state: LoadState<AlertRulesResponse>; refresh: () => void } {
-  const { demo } = useAuth();
+  const { demo, bench } = useAuth();
   const { state, refresh } = useApi<AlertRulesResponse>(
-    demo ? null : (c, signal) => getAlertRules(c, signal),
+    demo || bench ? null : (c, signal) => getAlertRules(c, signal),
     [],
-    opts,
+    {
+      ...opts,
+      benchLoader: bench ? (signal) => getAlertRulesBench(signal) : undefined,
+    },
   );
   const demoState = useMemo<LoadState<AlertRulesResponse>>(
     () => ({ status: "ok", data: { rules: demoAlertRules() }, loadedAt: NOW() }),
@@ -252,11 +313,14 @@ export function useAlertRules(
 export function useAlertDeliveries(
   opts: { pollMs?: number; refreshTrigger?: number } = {},
 ): { state: LoadState<AlertDeliveriesResponse>; refresh: () => void } {
-  const { demo } = useAuth();
+  const { demo, bench } = useAuth();
   const { state, refresh } = useApi<AlertDeliveriesResponse>(
-    demo ? null : (c, signal) => getAlertDeliveries(c, signal),
+    demo || bench ? null : (c, signal) => getAlertDeliveries(c, signal),
     [],
-    opts,
+    {
+      ...opts,
+      benchLoader: bench ? (signal) => getAlertDeliveriesBench(signal) : undefined,
+    },
   );
   const demoState = useMemo<LoadState<AlertDeliveriesResponse>>(
     () => ({
@@ -273,10 +337,14 @@ export function useAlertDeliveries(
 export function useEventDetail(
   id: number | null,
 ): { state: LoadState<EventDetailResponse>; refresh: () => void } {
-  const { demo } = useAuth();
+  const { demo, bench } = useAuth();
   const { state, refresh } = useApi<EventDetailResponse>(
-    !demo && id !== null ? (c, signal) => getEventDetail(c, id, signal) : null,
+    !demo && !bench && id !== null ? (c, signal) => getEventDetail(c, id, signal) : null,
     [id],
+    {
+      benchLoader:
+        bench && id !== null ? (signal) => getEventDetailBench(id, signal) : null,
+    },
   );
   const demoState = useMemo<LoadState<EventDetailResponse>>(() => {
     if (id === null) return { status: "idle" };

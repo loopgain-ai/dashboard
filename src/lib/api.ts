@@ -32,6 +32,20 @@ import type {
 const STORAGE_KEY = "loopgain-dashboard-config";
 const DEMO_KEY = "loopgain-dashboard-demo";
 
+// Public-bench routes on the production receiver. CORS is wildcard there,
+// so this URL works from any origin (prod dashboard, npm-run-dev localhost,
+// incognito previews — all hit the same managed receiver).
+export const BENCH_PUBLIC_BASE = "https://telemetry.loopgain.ai";
+const BENCH_PUBLIC_PREFIX = "/v1/public/benchmark";
+
+/** True when the current pathname is the public benchmark route. Read once
+ *  at module load — bench-mode is a property of the URL the user landed on,
+ *  not a runtime toggle. SSR-safe (returns false if `window` is undefined). */
+export function isBenchPath(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.location.pathname.startsWith("/benchmark");
+}
+
 export function loadConfig(): Config | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -153,6 +167,118 @@ async function apiSend<T>(
   }
   // DELETE may return a small body; otherwise JSON.
   return (await resp.json()) as T;
+}
+
+// ── Public bench endpoint wrappers ────────────────────────────────────
+//
+// Parallel to the authed wrappers below, but: (a) no Authorization header
+// (the public routes skip auth and hardcode `cust_7931de9f766452ac` in
+// the receiver), (b) target a fixed base URL, (c) follow `/v1/public/
+// benchmark/*` paths. Used by data-hooks when the dashboard is mounted at
+// `/benchmark` (see `isBenchPath`). Same JSON shape as the authed reads —
+// data-hooks don't need a type-level switch.
+
+function buildPublicUrl(
+  path: string,
+  params?: Record<string, string | number | undefined>,
+): string {
+  const u = new URL(BENCH_PUBLIC_BASE + BENCH_PUBLIC_PREFIX + path);
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null) u.searchParams.set(k, String(v));
+    }
+  }
+  return u.toString();
+}
+
+async function publicGet<T>(
+  path: string,
+  params?: Record<string, string | number | undefined>,
+  signal?: AbortSignal,
+): Promise<T> {
+  const resp = await fetch(buildPublicUrl(path, params), { signal });
+  if (!resp.ok) {
+    let body = "";
+    try {
+      body = await resp.text();
+    } catch {
+      /* noop */
+    }
+    throw new ApiError(resp.status, `HTTP ${resp.status} on ${path}${body ? `: ${body}` : ""}`);
+  }
+  return (await resp.json()) as T;
+}
+
+export function getStatsBench(signal?: AbortSignal): Promise<StatsResponse> {
+  return publicGet<StatsResponse>("/stats", undefined, signal);
+}
+
+export function getProfilesBench(
+  opts: { workloadId?: string; sinceHours?: number } & FilterSet = {},
+  signal?: AbortSignal,
+): Promise<ProfilesResponse> {
+  return publicGet<ProfilesResponse>(
+    "/profiles",
+    {
+      workload_id: opts.workloadId ?? opts.workload_id,
+      since_hours: opts.sinceHours,
+      framework: opts.framework,
+      loop_type: opts.loop_type,
+      team: opts.team,
+    },
+    signal,
+  );
+}
+
+export function getEventsBench(
+  opts: { rollbacksOnly?: boolean } & FilterSet = {},
+  signal?: AbortSignal,
+): Promise<EventsResponse> {
+  return publicGet<EventsResponse>(
+    "/events",
+    {
+      rollbacks_only: opts.rollbacksOnly ? "true" : undefined,
+      framework: opts.framework,
+      loop_type: opts.loop_type,
+      team: opts.team,
+      workload_id: opts.workload_id,
+    },
+    signal,
+  );
+}
+
+export function getCalibrationBench(
+  opts: { workloadId?: string; sinceHours?: number } & FilterSet = {},
+  signal?: AbortSignal,
+): Promise<CalibrationResponse> {
+  return publicGet<CalibrationResponse>(
+    "/calibration",
+    {
+      workload_id: opts.workloadId ?? opts.workload_id,
+      since_hours: opts.sinceHours,
+      framework: opts.framework,
+      loop_type: opts.loop_type,
+      team: opts.team,
+    },
+    signal,
+  );
+}
+
+export function getEventDetailBench(
+  id: number,
+  signal?: AbortSignal,
+): Promise<EventDetailResponse> {
+  return publicGet<EventDetailResponse>(`/event/${id}`, undefined, signal);
+}
+
+export function getAlertRulesBench(signal?: AbortSignal): Promise<AlertRulesResponse> {
+  return publicGet<AlertRulesResponse>("/alerts/rules", undefined, signal);
+}
+
+export function getAlertDeliveriesBench(
+  signal?: AbortSignal,
+): Promise<AlertDeliveriesResponse> {
+  return publicGet<AlertDeliveriesResponse>("/alerts/deliveries", undefined, signal);
 }
 
 // ── Typed endpoint wrappers ───────────────────────────────────────────
@@ -319,6 +445,10 @@ export type ConnectionState =
 export interface AuthCtx {
   config: Config | null;
   demo: boolean;
+  /** Read-only public benchmark view (`/benchmark` path). Set once at mount
+   *  from the URL; data-hooks route to `/v1/public/benchmark/*` when true,
+   *  and the UI hides every mutate affordance (Settings, Connect, etc.). */
+  bench: boolean;
   setDemo: (on: boolean) => void;
   connection: ConnectionState;
   connect: (c: Config) => Promise<void>;
@@ -352,9 +482,16 @@ export type LoadState<T> =
 export function useApi<T>(
   loader: ((config: Config, signal: AbortSignal) => Promise<T>) | null,
   deps: ReadonlyArray<unknown>,
-  opts: { pollMs?: number; refreshTrigger?: number } = {},
+  opts: {
+    pollMs?: number;
+    refreshTrigger?: number;
+    /** Bench-mode loader. Runs without a config (no auth) and takes
+     *  precedence over `loader` when `bench` is true in AuthCtx. Pass
+     *  `null` to keep the panel idle (e.g. event-detail with no id yet). */
+    benchLoader?: ((signal: AbortSignal) => Promise<T>) | null;
+  } = {},
 ): { state: LoadState<T>; refresh: () => void } {
-  const { config, demo } = useAuth();
+  const { config, demo, bench } = useAuth();
   const [state, setState] = useState<LoadState<T>>({ status: "idle" });
   const [tick, setTick] = useState(0);
   const stateRef = useRef(state);
@@ -363,6 +500,39 @@ export function useApi<T>(
   const refresh = useCallback(() => setTick((t) => t + 1), []);
 
   useEffect(() => {
+    // Bench-mode short-circuit: ignore config/demo entirely and run the
+    // public-routes loader. Demo cannot coexist with bench (bench wins).
+    if (bench) {
+      if (!opts.benchLoader) {
+        setState({ status: "idle" });
+        return;
+      }
+      const ctrl = new AbortController();
+      setState((s) =>
+        s.status === "ok"
+          ? { status: "loading", previous: s.data }
+          : { status: "loading" },
+      );
+      opts.benchLoader(ctrl.signal)
+        .then((data) => {
+          if (ctrl.signal.aborted) return;
+          setState({ status: "ok", data, loadedAt: Date.now() });
+        })
+        .catch((err: unknown) => {
+          if (ctrl.signal.aborted) return;
+          const e = err instanceof Error ? err : new Error(String(err));
+          setState((s) =>
+            s.status === "ok" || s.status === "loading"
+              ? {
+                  status: "error",
+                  error: e,
+                  previous: s.status === "ok" ? s.data : s.previous,
+                }
+              : { status: "error", error: e },
+          );
+        });
+      return () => ctrl.abort();
+    }
     if (!loader) {
       setState({ status: "idle" });
       return;
@@ -397,7 +567,7 @@ export function useApi<T>(
       });
     return () => ctrl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config?.endpoint, config?.token, demo, tick, opts.refreshTrigger, ...deps]);
+  }, [config?.endpoint, config?.token, demo, bench, tick, opts.refreshTrigger, ...deps]);
 
   useEffect(() => {
     if (!opts.pollMs) return;
@@ -414,11 +584,21 @@ export function asLoader<T>(fn: (c: Config, signal?: AbortSignal) => Promise<T>)
 }
 
 export function useAuthProvider(): AuthCtx {
-  const [config, setConfig] = useState<Config | null>(() => loadConfig());
-  const [demo, setDemoState] = useState<boolean>(() => loadDemoFlag());
-  const [connection, setConnection] = useState<ConnectionState>(() =>
-    loadConfig() ? { status: "connected", customerId: null } : { status: "disconnected" },
+  // Bench mode is decided once at mount from the URL. It overrides demo +
+  // config: the dashboard treats /benchmark as a sealed read-only context.
+  const bench = useMemo(() => isBenchPath(), []);
+  const [config, setConfig] = useState<Config | null>(() =>
+    bench ? null : loadConfig(),
   );
+  const [demo, setDemoState] = useState<boolean>(() =>
+    bench ? false : loadDemoFlag(),
+  );
+  const [connection, setConnection] = useState<ConnectionState>(() => {
+    if (bench) return { status: "connected", customerId: "cust_7931de9f766452ac" };
+    return loadConfig()
+      ? { status: "connected", customerId: null }
+      : { status: "disconnected" };
+  });
 
   const connect = useCallback(async (c: Config) => {
     setConnection({ status: "connecting" });
@@ -457,7 +637,7 @@ export function useAuthProvider(): AuthCtx {
   }, []);
 
   return useMemo(
-    () => ({ config, demo, setDemo, connection, connect, disconnect, ping }),
-    [config, demo, setDemo, connection, connect, disconnect, ping],
+    () => ({ config, demo, bench, setDemo, connection, connect, disconnect, ping }),
+    [config, demo, bench, setDemo, connection, connect, disconnect, ping],
   );
 }

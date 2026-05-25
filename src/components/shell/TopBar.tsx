@@ -24,6 +24,9 @@ interface Props {
   setDensity: (d: "comfortable" | "compact") => void;
   openPalette: () => void;
   openConnect: () => void;
+  /** Bench-mode disables the connect button + disconnect button (no
+   *  mutation paths reachable from this view). */
+  bench?: boolean;
 }
 
 export function TopBar({
@@ -35,6 +38,7 @@ export function TopBar({
   setDensity,
   openPalette,
   openConnect,
+  bench,
 }: Props) {
   const { connection, demo, disconnect } = useAuth();
   const connDot =
@@ -59,37 +63,62 @@ export function TopBar({
         flex: "0 0 auto",
       }}
     >
-      <button
-        type="button"
-        onClick={openConnect}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          height: 28,
-          padding: "0 10px",
-          borderRadius: 5,
-          border: "1px solid var(--border)",
-          background: "var(--surf-1)",
-          fontSize: 12,
-        }}
-        title={
-          demo
-            ? "Demo mode — connect a real receiver"
-            : connection.status === "connected"
-            ? "Connected"
-            : "Configure endpoint"
-        }
-      >
-        <span
-          className={connection.status === "connecting" ? "pulse-dot" : ""}
-          style={{ width: 6, height: 6, borderRadius: "50%", background: connDot }}
-        />
-        <span className="mono" style={{ color: "var(--text-1)" }}>
-          {demo ? "env:demo" : connection.status === "connected" ? "env:live" : "env:setup"}
-        </span>
-        <Icon.ArrowDown />
-      </button>
+      {bench ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            height: 28,
+            padding: "0 10px",
+            borderRadius: 5,
+            border: "1px solid var(--border)",
+            background: "var(--surf-1)",
+            fontSize: 12,
+            cursor: "default",
+          }}
+          title="Public benchmark tenant — read-only"
+        >
+          <span
+            style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--band-fast)" }}
+          />
+          <span className="mono" style={{ color: "var(--text-1)" }}>
+            env:bench
+          </span>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={openConnect}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            height: 28,
+            padding: "0 10px",
+            borderRadius: 5,
+            border: "1px solid var(--border)",
+            background: "var(--surf-1)",
+            fontSize: 12,
+          }}
+          title={
+            demo
+              ? "Demo mode — connect a real receiver"
+              : connection.status === "connected"
+              ? "Connected"
+              : "Configure endpoint"
+          }
+        >
+          <span
+            className={connection.status === "connecting" ? "pulse-dot" : ""}
+            style={{ width: 6, height: 6, borderRadius: "50%", background: connDot }}
+          />
+          <span className="mono" style={{ color: "var(--text-1)" }}>
+            {demo ? "env:demo" : connection.status === "connected" ? "env:live" : "env:setup"}
+          </span>
+          <Icon.ArrowDown />
+        </button>
+      )}
 
       <div
         style={{
@@ -229,7 +258,7 @@ export function TopBar({
         {theme === "dark" ? <Icon.Sun /> : <Icon.Moon />}
       </button>
 
-      {(connection.status === "connected" || demo) && (
+      {!bench && (connection.status === "connected" || demo) && (
         <button
           type="button"
           onClick={disconnect}

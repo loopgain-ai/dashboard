@@ -65,11 +65,17 @@ export function App() {
 }
 
 function AppInner() {
-  const { config, demo, connection, disconnect } = useAuth();
-  const isAuthed = Boolean(config) || demo;
+  const { config, demo, bench, connection, disconnect } = useAuth();
+  // Bench mode counts as authed for the panel-vs-EmptyState branch — the
+  // public endpoints are doing the auth-equivalent server-side.
+  const isAuthed = Boolean(config) || demo || bench;
 
   const [route, setRoute] = useState<RouteId>("overview");
-  const [collapsed, setCollapsed] = useState(false);
+  // Default the sidebar to collapsed on narrow viewports so the content
+  // pane has room. Decided once at mount — user can still expand manually.
+  const [collapsed, setCollapsed] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < 720,
+  );
   const [theme, setTheme] = useState<Theme>(() => loadTheme());
   const [density, setDensity] = useState<Density>(() => loadDensity());
   const [timeRange, setTimeRange] = useState<TimeRange>("30d");
@@ -92,10 +98,19 @@ function AppInner() {
     localStorage.setItem(DENSITY_KEY, density);
   }, [density]);
 
-  // Open the connect dialog automatically if we land with no config & not in demo.
+  // Open the connect dialog automatically if we land with no config & not in
+  // demo/bench. Bench-mode is read-only and never prompts for a token.
   useEffect(() => {
-    if (!isAuthed) setConnectOpen(true);
-  }, [isAuthed]);
+    if (!isAuthed && !bench) setConnectOpen(true);
+  }, [isAuthed, bench]);
+
+  // In bench mode, "settings" and "empty" routes are inaccessible. If a
+  // route state survives via hot-reload, redirect to overview.
+  useEffect(() => {
+    if (bench && (route === "settings" || route === "empty")) {
+      setRoute("overview");
+    }
+  }, [bench, route]);
 
   const pollMs = timeRange === "live" ? 15_000 : undefined;
   const sinceHours = timeRangeHours(timeRange) ?? undefined;
@@ -133,9 +148,15 @@ function AppInner() {
           r: "rollbacks",
           e: "eta",
           a: "alerts",
+          // Settings is hidden in bench mode; the keybinding is gated below.
           s: "settings",
         };
         const target = map[e.key];
+        if (target === "settings" && bench) {
+          prefix = null;
+          if (timer) window.clearTimeout(timer);
+          return;
+        }
         if (target) {
           setRoute(target);
           prefix = null;
@@ -153,7 +174,7 @@ function AppInner() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [bench]);
 
   // ── Route content ──────────────────────────────────────────────────
   const content = useMemo(() => {
@@ -215,8 +236,15 @@ function AppInner() {
 
   return (
     <div style={{ display: "flex", height: "100vh", background: "var(--bg-0)" }}>
-      <Sidebar route={route} setRoute={setRoute} collapsed={collapsed} setCollapsed={setCollapsed} />
+      <Sidebar
+        route={route}
+        setRoute={setRoute}
+        collapsed={collapsed}
+        setCollapsed={setCollapsed}
+        bench={bench}
+      />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        {bench && <BenchBanner />}
         <TopBar
           timeRange={timeRange}
           setTimeRange={setTimeRange}
@@ -226,6 +254,7 @@ function AppInner() {
           setDensity={setDensity}
           openPalette={() => setPaletteOpen(true)}
           openConnect={() => setConnectOpen(true)}
+          bench={bench}
         />
         {isAuthed && route !== "settings" && route !== "empty" && <FilterBar />}
         <main style={{ flex: 1, overflow: "auto" }}>{content}</main>
@@ -259,7 +288,7 @@ function AppInner() {
                     : "var(--text-3)",
               }}
             >
-              ● {demo ? "demo" : connection.status}
+              ● {bench ? "bench" : demo ? "demo" : connection.status}
             </span>
           </span>
           {connection.status === "connected" && "customerId" in connection && connection.customerId && (
@@ -302,12 +331,77 @@ function AppInner() {
         toggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
         disconnect={disconnect}
       />
-      <ConnectDialog open={connectOpen} onClose={() => setConnectOpen(false)} />
+      {!bench && (
+        <ConnectDialog open={connectOpen} onClose={() => setConnectOpen(false)} />
+      )}
 
       {/* Show nav keybinding hint badges (no-op, just to ensure NAV stays imported) */}
       <span style={{ display: "none" }} aria-hidden>
         {NAV.length}
       </span>
+    </div>
+  );
+}
+
+/** Sticky banner shown across the top of every panel in bench mode. Names
+ *  what the viewer is looking at + funnels to sign-up. Sits above TopBar so
+ *  it's the first thing on the page. */
+function BenchBanner() {
+  return (
+    <div
+      style={{
+        flex: "0 0 auto",
+        padding: "10px 16px",
+        background: "var(--surf-2)",
+        borderBottom: "1px solid var(--border)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        columnGap: 16,
+        rowGap: 8,
+        flexWrap: "wrap",
+        fontSize: 12.5,
+        color: "var(--text-1)",
+      }}
+    >
+      <div style={{ flex: "1 1 320px", minWidth: 0 }}>
+        <strong style={{ fontWeight: 600 }}>
+          You&apos;re viewing the LoopGain benchmark tenant
+        </strong>{" "}
+        <span style={{ color: "var(--text-2)" }}>
+          — 2,000 real-API trials from the{" "}
+          <a
+            href="https://github.com/loopgain-ai/loopgain-bench"
+            target="_blank"
+            rel="noopener"
+            style={{ color: "var(--accent)", textDecoration: "underline" }}
+          >
+            public bench repo
+          </a>
+          . This is read-only demo data.
+        </span>
+      </div>
+      <a
+        href="https://loopgain.ai"
+        target="_blank"
+        rel="noopener"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          height: 28,
+          padding: "0 14px",
+          borderRadius: 5,
+          background: "var(--accent)",
+          color: "var(--bg-0)",
+          fontWeight: 500,
+          textDecoration: "none",
+          whiteSpace: "nowrap",
+          flex: "0 0 auto",
+        }}
+      >
+        Sign up free → instrument your own loops
+      </a>
     </div>
   );
 }

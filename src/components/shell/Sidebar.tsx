@@ -6,9 +6,11 @@ interface Props {
   setRoute: (r: RouteId) => void;
   collapsed: boolean;
   setCollapsed: (fn: (c: boolean) => boolean) => void;
+  /** Bench-mode hides the Settings nav item (no mutation paths). */
+  bench?: boolean;
 }
 
-export function Sidebar({ route, setRoute, collapsed, setCollapsed }: Props) {
+export function Sidebar({ route, setRoute, collapsed, setCollapsed, bench }: Props) {
   return (
     <aside
       className="app-sidebar"
@@ -135,26 +137,28 @@ export function Sidebar({ route, setRoute, collapsed, setCollapsed }: Props) {
       </nav>
 
       <div style={{ borderTop: "1px solid var(--border)", padding: 8 }}>
-        <button
-          type="button"
-          onClick={() => setRoute("settings")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            padding: collapsed ? "0" : "0 10px",
-            height: 30,
-            width: "100%",
-            justifyContent: collapsed ? "center" : "flex-start",
-            borderRadius: 5,
-            color: route === "settings" ? "var(--text-1)" : "var(--text-2)",
-            background: route === "settings" ? "var(--surf-2)" : "transparent",
-            fontSize: 12.5,
-          }}
-        >
-          <Icon.Settings />
-          {!collapsed && <span>Settings</span>}
-        </button>
+        {!bench && (
+          <button
+            type="button"
+            onClick={() => setRoute("settings")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: collapsed ? "0" : "0 10px",
+              height: 30,
+              width: "100%",
+              justifyContent: collapsed ? "center" : "flex-start",
+              borderRadius: 5,
+              color: route === "settings" ? "var(--text-1)" : "var(--text-2)",
+              background: route === "settings" ? "var(--surf-2)" : "transparent",
+              fontSize: 12.5,
+            }}
+          >
+            <Icon.Settings />
+            {!collapsed && <span>Settings</span>}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setCollapsed((c) => !c)}
