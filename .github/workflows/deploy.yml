@@ -1,0 +1,62 @@
+# Deploy dashboard.loopgain.ai to Cloudflare Workers on every push to main.
+#
+# Workers-with-static-assets project. The dashboard is a Vite/React app, so
+# unlike the landing repo we need an npm install + build step in front of
+# `wrangler deploy` to produce `dist/`. wrangler.jsonc points `assets.directory`
+# at `./dist` and Cloudflare uploads what's there.
+#
+# One-time setup (Settings → Secrets and variables → Actions):
+#   - CLOUDFLARE_API_TOKEN — Workers scripts:edit + Account settings:read.
+#     Create at https://dash.cloudflare.com/profile/api-tokens using the
+#     "Edit Cloudflare Workers" template; restrict to the Fitz account.
+#     Same token already configured on loopgain-ai/landing can be reused.
+#   - CLOUDFLARE_ACCOUNT_ID — 13c6dbdde53b238edc6e51c5ebc4b5eb
+#
+# Falls back to manual `npm run build && npx wrangler deploy` from a local
+# checkout if this ever breaks.
+
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: build + wrangler deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # Matches .nvmrc — keeps CI build aligned with local builds.
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        # tsc --noEmit && vite build → dist/
+        run: npm run build
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Wrangler v4 is required for Workers-with-static-assets projects
+          # (no `main` script). v3 errors with "Missing entry-point".
+          wranglerVersion: "4"
+          # Defaults to `wrangler deploy`. Reads wrangler.jsonc + uploads dist/.
