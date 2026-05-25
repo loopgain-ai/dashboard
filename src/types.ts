@@ -43,6 +43,15 @@ export interface StatsResponse {
   frameworks?: Array<{ value: string; count: number }>;
   loop_types?: Array<{ value: string; count: number }>;
   teams?: Array<{ value: string; count: number }>;
+  /** Tenant-wide percentile aggregates over the 30d window. Computed
+   *  server-side so the dashboard doesn't have to median-over a
+   *  recency-biased /events sample. Optional on older receivers. */
+  aggregates?: {
+    ab_median: number | null;
+    ab_p99: number | null;
+    gm_median: number | null;
+    gm_p10: number | null;
+  };
 }
 
 /** Classification labels (schema v3). All optional, all opaque strings. */

@@ -2,7 +2,7 @@
 
 import { useMemo, type ReactNode } from "react";
 import { useEventDetail, useEvents, useStats } from "../../lib/data-hooks";
-import { BANDS, BAND_COLOR, bandFromEvent } from "../../lib/bands";
+import { bandFromEvent } from "../../lib/bands";
 import { fmtRel, fmtTime, fmtUSD, fmtInt } from "../../lib/format";
 import { median, percentile } from "../../lib/stats";
 import { Chip, Icon, KPI, PanelHeader, StatePill } from "../primitives";
@@ -11,7 +11,57 @@ import { Loaded } from "./PanelState";
 import { loopRouteId } from "../shell/routes";
 import type { RouteId, TimeRange } from "../shell";
 import type { LoadState } from "../../lib/api";
-import type { Band, EventDetailResponse, LoopEvent, StatsResponse } from "../../types";
+import type { EventDetailResponse, LoopEvent, Outcome, StatsResponse } from "../../types";
+
+// Visual mapping for the outcome strip. Drives the five-pill row in the
+// Aβ-gauge card. Outcomes come from /v1/stats.outcomes (server-side counts
+// across every event in window) so the strip reflects tenant-wide reality
+// rather than the recency-biased /events sample. We reuse the band-color
+// palette since each outcome has a natural band analogue:
+//   converged      → CONV (green)
+//   stalled        → STALL (yellow)
+//   max_iterations → STALL (never reached target)
+//   oscillating    → OSC (red)
+//   diverged       → DIV (dark red)
+// Cells with zero count are hidden — a healthy tenant won't see DIV/OSC
+// pills at all, and the bench won't see a FAST cell that doesn't apply.
+interface OutcomeCell {
+  key: string;
+  short: string;
+  cls: "fast" | "conv" | "stall" | "osc" | "div";
+  colorVar: string;
+  matches: ReadonlyArray<Outcome>;
+}
+const OUTCOME_CELLS: ReadonlyArray<OutcomeCell> = [
+  {
+    key: "converged",
+    short: "CONV",
+    cls: "conv",
+    colorVar: "var(--band-conv)",
+    matches: ["converged"],
+  },
+  {
+    key: "stalled",
+    short: "STALL",
+    cls: "stall",
+    colorVar: "var(--band-stall)",
+    matches: ["stalled", "max_iterations"],
+  },
+  {
+    key: "oscillating",
+    short: "OSC",
+    cls: "osc",
+    colorVar: "var(--band-osc)",
+    matches: ["oscillating"],
+  },
+  {
+    key: "diverged",
+    short: "DIV",
+    cls: "div",
+    colorVar: "var(--band-div)",
+    matches: ["diverged"],
+  },
+];
 
 interface Props {
   setRoute: (r: RouteId) => void;
@@ -61,37 +111,52 @@ function OverviewBody({
   isStale: boolean;
   timeRange: TimeRange;
 }) {
-  const bands = useMemo(() => events.map((e) => bandFromEvent(e)), [events]);
-  const bandCounts = useMemo(() => {
-    const c: Record<Band, number> = {
-      FAST_CONVERGE: 0,
-      CONVERGING: 0,
-      STALLING: 0,
-      OSCILLATING: 0,
-      DIVERGING: 0,
-    };
-    for (const b of bands) c[b]++;
+  // Outcome counts come straight from /v1/stats.outcomes — tenant-wide,
+  // not sample-biased. Outcomes are the terminal state recorded by the
+  // library; the receiver SUMs them on every event in window.
+  const outcomeCounts = useMemo<Record<string, number>>(() => {
+    const c: Record<string, number> = {};
+    for (const row of stats.outcomes) c[row.outcome] = row.count;
     return c;
-  }, [bands]);
-  // `sampleSize` = how many events came back from /v1/events (LIMIT 500 on
-  // the receiver). `totalEvents` = the true tenant-wide count from /v1/stats.
-  // Bands are classified client-side from per-loop `profile_max`, which only
-  // comes back via /events — so band counts are sample-derived. Use
-  // `totalEvents` for the headline number so customers with >500 runs in
-  // window see their real volume, not the sample cap.
-  const sampleSize = events.length;
-  const totalEvents = stats.totals?.event_count ?? sampleSize;
-  const isSampled = totalEvents > sampleSize;
+  }, [stats.outcomes]);
+  const totalEvents = stats.totals?.event_count ?? events.length;
+  // Cells with non-zero matching outcomes; render this set so a healthy
+  // tenant doesn't see five zeros next to one number.
+  const visibleCells = useMemo(
+    () =>
+      OUTCOME_CELLS.map((cell) => {
+        const count = cell.matches.reduce(
+          (s, k) => s + (outcomeCounts[k] ?? 0),
+          0,
+        );
+        return { ...cell, count };
+      }).filter((cell) => cell.count > 0),
+    [outcomeCounts],
+  );
+  // Attention = oscillating + diverged. Mirrors the old DIV+OSC band sum but
+  // now sourced from server-side outcome counts.
+  const attentionCount =
+    (outcomeCounts["oscillating"] ?? 0) + (outcomeCounts["diverged"] ?? 0);
+  const hasDiverged = (outcomeCounts["diverged"] ?? 0) > 0;
 
-  // Aβ_median across recent events. Use profile_max as the per-loop Aβ_smooth
-  // proxy (the loop's worst point), then take the fleet median of those.
-  const abValues = useMemo(() => events.map((e) => e.profile_max), [events]);
-  const abMedian = median(abValues) ?? 0;
-  const abP99 = percentile(abValues, 0.99) ?? 0;
-
-  const gmValues = useMemo(() => events.map((e) => e.gain_margin), [events]);
-  const gmMedian = median(gmValues) ?? 0;
-  const gmP10 = percentile(gmValues, 0.1) ?? 0;
+  // Tenant-wide percentile aggregates from /v1/stats.aggregates when present
+  // (newer receiver), else fall back to client-medians over the /events
+  // sample (older receiver). The fallback is recency-biased; the server path
+  // isn't. Most prod tenants should have aggregates; fallback exists so a
+  // self-hosted older receiver still renders something rather than empty.
+  const sampleAbValues = useMemo(
+    () => events.map((e) => e.profile_max),
+    [events],
+  );
+  const sampleGmValues = useMemo(
+    () => events.map((e) => e.gain_margin),
+    [events],
+  );
+  const agg = stats.aggregates;
+  const abMedian = agg?.ab_median ?? median(sampleAbValues) ?? 0;
+  const abP99 = agg?.ab_p99 ?? percentile(sampleAbValues, 0.99) ?? 0;
+  const gmMedian = agg?.gm_median ?? median(sampleGmValues) ?? 0;
+  const gmP10 = agg?.gm_p10 ?? percentile(sampleGmValues, 0.1) ?? 0;
 
   const totals = stats.totals ?? {
     event_count: 0,
@@ -121,8 +186,6 @@ function OverviewBody({
       iterations: e.iterations_used,
     }));
   }, [events]);
-
-  const attentionCount = bandCounts.OSCILLATING + bandCounts.DIVERGING;
 
   // Latest-trajectory selection. Prefer the most recent attention-worthy
   // run (OSCILLATING / DIVERGING) so an operator opens to the run they'd
@@ -177,22 +240,27 @@ function OverviewBody({
             </div>
           </div>
           <div className="band-strip">
-            {BANDS.map((b) => {
-              const count = bandCounts[b.id];
-              const pct = sampleSize > 0 ? (count / sampleSize) * 100 : 0;
+            {visibleCells.map((cell) => {
+              const pct = totalEvents > 0 ? (cell.count / totalEvents) * 100 : 0;
               return (
-                <div key={b.id} className="band-cell">
-                  <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}>
-                    <span className={`pill pill-${b.cls}`} style={{ fontSize: 9.5 }}>
-                      <span className={`dot dot-${b.cls}`} />
-                      {b.short}
+                <div key={cell.key} className="band-cell">
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "center",
+                      marginBottom: 6,
+                    }}
+                  >
+                    <span className={`pill pill-${cell.cls}`} style={{ fontSize: 9.5 }}>
+                      <span className={`dot dot-${cell.cls}`} />
+                      {cell.short}
                     </span>
                   </div>
                   <div
                     className="mono band-cell-num"
-                    style={{ color: BAND_COLOR[b.id] }}
+                    style={{ color: cell.colorVar }}
                   >
-                    {count}
+                    {fmtInt(cell.count)}
                   </div>
                   <div
                     className="mono"
@@ -204,19 +272,17 @@ function OverviewBody({
               );
             })}
           </div>
-          {isSampled && (
-            <div
-              className="mono"
-              style={{
-                fontSize: 10,
-                color: "var(--text-3)",
-                textAlign: "center",
-                marginTop: -6,
-              }}
-            >
-              band breakdown · most recent {fmtInt(sampleSize)} of {fmtInt(totalEvents)}
-            </div>
-          )}
+          <div
+            className="mono"
+            style={{
+              fontSize: 10,
+              color: "var(--text-3)",
+              textAlign: "center",
+              marginTop: -6,
+            }}
+          >
+            outcome distribution · {fmtInt(totalEvents)} loop events
+          </div>
         </div>
 
         <div
@@ -442,10 +508,8 @@ function OverviewBody({
             route: "health-map" as const,
             icon: "Map" as const,
             title: "Loop Health Map",
-            desc: isSampled
-              ? `${fmtInt(totalEvents)} loops · ${attentionCount} attention in recent ${fmtInt(sampleSize)}`
-              : `${fmtInt(totalEvents)} recent loops · ${attentionCount} need attention`,
-            badge: bandCounts.DIVERGING > 0 ? "div" : null,
+            desc: `${fmtInt(totalEvents)} loops · ${fmtInt(attentionCount)} need attention`,
+            badge: hasDiverged ? "div" : null,
           },
           {
             route: "rollbacks" as const,
