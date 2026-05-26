@@ -45,6 +45,14 @@ export interface StatsResponse {
     total_actual_dollars_saved?: number | null;
     /** Count of events with actual_dollars_saved populated. */
     event_count_with_actual_savings?: number;
+    /** Sum of actual_dollars_spent across matched events. Companion to
+     *  total_actual_dollars_saved; same population semantics. Receiver
+     *  v3.2+ only. When populated, the Waste panel uses it directly as
+     *  the "actual spend" hero number instead of extrapolating from
+     *  iter-count × $/iter. */
+    total_actual_dollars_spent?: number | null;
+    /** Count of events with actual_dollars_spent populated. */
+    event_count_with_actual_spend?: number;
   } | null;
   workloads: Array<{ workload_id: string | null; count: number }>;
   // Schema v3: distinct values for the classification fields, used to

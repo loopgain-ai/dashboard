@@ -79,29 +79,25 @@ function WasteBody({
   const saved = hasActualSavings
     ? (totals.total_actual_dollars_saved as number)
     : totals.total_savings * costPerIter;
-  // TEMP v2-cleanup hack (2026-05-25): the bench tenant has real LG
-  // spend ($1.80 across the trial set) but the receiver doesn't yet
-  // carry actual_dollars_spent per event, so the extrapolated
-  // iter × $/iter actualSpend lands at ~$65 and the counterfactual
-  // ends up at ~$90 — completely inconsistent with the measured 93.5%
-  // savings headline. Hardcode the bench constant for tonight; the
-  // proper fix is a new actual_dollars_spent column in the receiver
-  // schema + a per-event population from the bench JSONL (mirroring
-  // the actual_dollars_saved pattern).
-  const BENCH_TENANT_ID = "cust_7931de9f766452ac";
-  const BENCH_ACTUAL_SPEND_USD = 1.8;
-  const isBenchTenant = stats.customer_id === BENCH_TENANT_ID;
-  const actualSpend = isBenchTenant
-    ? BENCH_ACTUAL_SPEND_USD
+  // actualSpend prefers measured data when the receiver exposes it
+  // (receiver v0.3.2+, currently populated by the bench tenant via
+  // paired cost_usd.LG per trial). Falls back to iter-count × $/iter
+  // extrapolation when measured spend is unavailable. Same shape as
+  // hasActualSavings above — this replaces a 2026-05-25 bench-tenant
+  // string-match hack with a flag driven by data the receiver carries.
+  const hasActualSpend =
+    typeof totals.total_actual_dollars_spent === "number" &&
+    Number.isFinite(totals.total_actual_dollars_spent);
+  const actualSpend = hasActualSpend
+    ? (totals.total_actual_dollars_spent as number)
     : totals.total_iterations * costPerIter;
   // Counterfactual = what the user would have spent with no LoopGain in
   // the loop. Three flavors of "would have spent" exist:
-  //   - measured + measured (bench tenant, post-hack): saved $ is the
-  //     paired-baseline delta, actual spend is the hardcoded LG total
-  //     from the trials; counterfactual is their sum.
-  //   - measured + extrapolated (paired-baseline tenants without
-  //     hardcoded spend): the saved $ is real; actual spend is
-  //     iter × $/iter. counterfactual = saved + actual_spend.
+  //   - measured + measured (paired-baseline tenants with cost data on
+  //     every event): saved $ is the paired delta, actual spend is the
+  //     real LG cost; counterfactual is their sum. Cents-precision.
+  //   - measured + extrapolated (paired savings, no per-event spend):
+  //     saved is real, spend is iter × $/iter, counterfactual = sum.
   //   - pure extrapolation (no paired baseline): treat every avoided
   //     iteration as if it would have run at $/iter — counterfactual
   //     = (used + avoided) × $/iter.
@@ -180,12 +176,15 @@ function WasteBody({
       hasActualSavings && extrapolatedSavedTotal > 0
         ? saved / extrapolatedSavedTotal
         : 1;
-    // Bench-tenant spend hack: scale per-event extrapolated spend down
-    // so the daily layer integrates to the hardcoded $1.80, matching
-    // the hero. Same shape as savedScale above.
+    // Same scaling trick for the spend layer when the receiver carries
+    // measured spend (v0.3.2+). Per-event spend is still extrapolated
+    // from iter-count because actual_dollars_spent isn't joined onto
+    // /v1/events yet; we scale it so the daily layer integrates to the
+    // measured headline. Falls back to no-op when only extrapolated
+    // spend is available.
     const extrapolatedSpentTotal = totals.total_iterations * costPerIter;
     const spentScale =
-      isBenchTenant && extrapolatedSpentTotal > 0
+      hasActualSpend && extrapolatedSpentTotal > 0
         ? actualSpend / extrapolatedSpentTotal
         : 1;
     const m = new Map<number, { saved: number; spent: number }>();
@@ -224,7 +223,7 @@ function WasteBody({
     saved,
     totals.total_savings,
     totals.total_iterations,
-    isBenchTenant,
+    hasActualSpend,
     actualSpend,
   ]);
 
@@ -371,7 +370,7 @@ function WasteBody({
         >
           <div>
             <div className="label">
-              {isBenchTenant ? "Measured" : "Extrapolated"} · would have spent
+              {hasActualSpend ? "Measured" : "Extrapolated"} · would have spent
               <span
                 className="mono"
                 style={{
@@ -379,15 +378,15 @@ function WasteBody({
                   fontSize: 9.5,
                   padding: "2px 6px",
                   borderRadius: 3,
-                  background: isBenchTenant
+                  background: hasActualSpend
                     ? "color-mix(in oklab, var(--band-fast) 18%, transparent)"
                     : "var(--surf-3)",
-                  color: isBenchTenant ? "var(--band-fast)" : "var(--text-3)",
+                  color: hasActualSpend ? "var(--band-fast)" : "var(--text-3)",
                   letterSpacing: "0.04em",
                 }}
               >
-                {isBenchTenant
-                  ? "PAIRED B20 BASELINE"
+                {hasActualSpend
+                  ? "PAIRED BASELINE"
                   : `ESTIMATE · $${costPerIter.toFixed(2)}/ITER`}
               </span>
             </div>
@@ -403,12 +402,12 @@ function WasteBody({
                 marginTop: 6,
               }}
             >
-              {fmtUSD(counterfactual, { cents: isBenchTenant })}
+              {fmtUSD(counterfactual, { cents: hasActualSpend })}
             </div>
           </div>
           <div>
             <div className="label">
-              Actual spend · {isBenchTenant ? "measured" : "extrapolated"}
+              Actual spend · {hasActualSpend ? "measured" : "extrapolated"}
             </div>
             <div
               className="mono"
@@ -420,11 +419,11 @@ function WasteBody({
                 marginTop: 4,
               }}
             >
-              {fmtUSD(actualSpend, { cents: isBenchTenant })}
+              {fmtUSD(actualSpend, { cents: hasActualSpend })}
             </div>
             <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>
-              {isBenchTenant
-                ? `${fmtInt(totals.total_iterations)} iterations · real LG cost from bench trials`
+              {hasActualSpend
+                ? `${fmtInt(totals.total_iterations)} iterations · real per-trial cost`
                 : `${fmtInt(totals.total_iterations)} iterations × $${costPerIter.toFixed(2)} per iter`}
             </div>
           </div>
