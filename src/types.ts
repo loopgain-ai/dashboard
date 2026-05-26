@@ -54,12 +54,28 @@ export interface StatsResponse {
   teams?: Array<{ value: string; count: number }>;
   /** Tenant-wide percentile aggregates over the 30d window. Computed
    *  server-side so the dashboard doesn't have to median-over a
-   *  recency-biased /events sample. Optional on older receivers. */
+   *  recency-biased /events sample. Optional on older receivers.
+   *
+   *  Receiver v0.3.1+ (2026-05-25):
+   *  - ab_median/ab_p99 now exclude rows with NULL profile_max
+   *    (was COALESCE(profile_max, 0) → 0 on TARGET_MET-at-iter-1
+   *    workloads).
+   *  - by_outcome adds fleet-wide per-outcome rollups: actual
+   *    paired-baseline dollar savings, iterations used vs avoided,
+   *    event counts. Lets the dashboard render measured savings
+   *    breakdowns instead of extrapolating from an events sample. */
   aggregates?: {
     ab_median: number | null;
     ab_p99: number | null;
     gm_median: number | null;
     gm_p10: number | null;
+    by_outcome?: Array<{
+      outcome: Outcome;
+      events: number;
+      iterations_used: number;
+      iterations_avoided: number;
+      actual_dollars_saved: number | null;
+    }>;
   };
 }
 

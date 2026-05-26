@@ -6,10 +6,10 @@
 // Schema v3 (loopgain >= 0.1.6) is required for per-iteration data;
 // older runs render the per-run summary only.
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useEventDetail, useProfiles } from "../../lib/data-hooks";
 import { BAND_COLOR, bandFromProfileEvent, outcomeLabel } from "../../lib/bands";
-import { Chip, Icon, KPI, StatePill } from "../primitives";
+import { Chip, Icon, KPI, NoCase, StatePill } from "../primitives";
 import { ConvergenceOverTime, Sparkline, TrajectoryChart } from "../charts";
 import { Loaded } from "./PanelState";
 import { fmtAbsTs, fmtAbsTsExact, fmtInt, fmtRel } from "../../lib/format";
@@ -498,12 +498,4 @@ function ScrubberError({ message }: { message: string }) {
   );
 }
 
-// The .label class applies text-transform: uppercase site-wide. β.toUpperCase()
-// is the Greek capital beta U+0392, which renders visually as "B" in most
-// fonts — so "Aβ" gets shown as "AB" in any uppercase KPI label. This
-// wrapper opts a span back out of the uppercase transform so the lowercase
-// β stays visible.
-function NoCase({ children }: { children: ReactNode }) {
-  return <span style={{ textTransform: "none" }}>{children}</span>;
-}
 

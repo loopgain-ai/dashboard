@@ -215,10 +215,10 @@ function HealthMapBody({
         >
           <div className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>
             showing <span style={{ color: "var(--text-1)" }}>{fmtInt(visibleEvents.length)}</span>{" "}
-            of <span style={{ color: "var(--text-1)" }}>{fmtInt(events.length)}</span> sampled
-            {events.length < totalEvents && (
-              <> (of {fmtInt(totalEvents)} fleet-wide)</>
-            )}
+            of <span style={{ color: "var(--text-1)" }}>{fmtInt(events.length)}</span>{" "}
+            {events.length < totalEvents
+              ? <>sampled (of {fmtInt(totalEvents)} fleet-wide)</>
+              : "events"}
             {" · cells sized by "}{sizeBy}
           </div>
           <div style={{ display: "flex", gap: 14, fontSize: 10.5 }}>

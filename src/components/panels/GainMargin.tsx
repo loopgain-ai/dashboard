@@ -18,6 +18,21 @@ interface Props {
   sinceHours?: number;
 }
 
+// Compose the "N of M · context" sublabel. The denominator is the
+// count of events with a non-null gain_margin (only loops that ran
+// long enough to measure GM). When that's < the tenant's total
+// event count, say so explicitly — it isn't a sample cap, it's a
+// data-availability filter.
+function fleetwideScopeNote(
+  count: number,
+  withGM: number,
+  total: number,
+  context: string,
+): string {
+  const tail = withGM < total ? "with GM · " : "· ";
+  return `${fmtInt(count)} of ${fmtInt(withGM)} ${tail}${context}`;
+}
+
 export function GainMargin({ pollMs, sinceHours }: Props) {
   const events = useEvents({ pollMs, sinceHours });
   const stats = useStats({ pollMs });
@@ -88,12 +103,12 @@ function GainMarginBody({
           {
             label: "GM < 1.2",
             value: fmtPct(pctBelowRisky),
-            sub: `${fmtInt(belowRisky)} of ${fmtInt(eventsWithGM.length)} sampled · risky band`,
+            sub: fleetwideScopeNote(belowRisky, eventsWithGM.length, totalEvents, "risky band"),
           },
           {
             label: "GM < 1.0",
             value: fmtInt(belowInstability),
-            sub: `of ${fmtInt(eventsWithGM.length)} sampled · past instability`,
+            sub: fleetwideScopeNote(belowInstability, eventsWithGM.length, totalEvents, "past instability"),
           },
         ].map((k, i) => (
           <div

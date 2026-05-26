@@ -96,8 +96,34 @@ function WasteBody({
       .sort((a, b) => b.value - a.value);
   }, [events, costPerIter]);
 
-  // By outcome
-  const byOutcome = useMemo(() => {
+  // By outcome — prefer the receiver's fleet-wide aggregate
+  // (v0.3.1+) which carries real `actual_dollars_saved` per
+  // outcome. Falls back to extrapolating from the events sample
+  // for older receivers. Returned shape distinguishes which path
+  // we took so the breakdown panel can label itself honestly.
+  const byOutcome = useMemo<{
+    rows: Array<{ label: string; value: number }>;
+    source: "measured" | "extrapolated";
+  }>(() => {
+    const agg = stats.aggregates?.by_outcome;
+    const hasMeasured =
+      agg &&
+      agg.length > 0 &&
+      agg.every(
+        (r) =>
+          typeof r.actual_dollars_saved === "number" &&
+          Number.isFinite(r.actual_dollars_saved),
+      );
+    if (hasMeasured) {
+      const rows = agg
+        .map((r) => ({
+          label: r.outcome,
+          value: r.actual_dollars_saved as number,
+        }))
+        .filter((r) => r.value > 0)
+        .sort((a, b) => b.value - a.value);
+      return { rows, source: "measured" };
+    }
     const m = new Map<string, number>();
     for (const e of events) {
       if (e.savings_vs_fixed_cap != null && e.savings_vs_fixed_cap > 0) {
@@ -105,10 +131,11 @@ function WasteBody({
         m.set(e.outcome, (m.get(e.outcome) ?? 0) + dollars);
       }
     }
-    return Array.from(m)
+    const rows = Array.from(m)
       .map(([label, value]) => ({ label, value }))
       .sort((a, b) => b.value - a.value);
-  }, [events, costPerIter]);
+    return { rows, source: "extrapolated" };
+  }, [events, costPerIter, stats.aggregates?.by_outcome]);
 
   // Daily time series — bucket events into days, compute saved + would-have-spent.
   const series = useMemo(() => {
@@ -342,32 +369,59 @@ function WasteBody({
 
       <div className="waste-breakdowns">
         {[
-          { title: "By workload", rows: byWorkload, byOutcome: false },
-          { title: "By outcome", rows: byOutcome, byOutcome: true },
-        ].map((b) => (
-          <div key={b.title} className="card">
-            <div className="card-h">
-              <h3>{b.title}</h3>
-              <span
-                className="mono"
-                style={{ fontSize: 10.5, color: "var(--text-3)" }}
-                title="Extrapolated from savings_vs_fixed_cap × cost/iter across the events sample. Not the paired-baseline measurement."
-              >
-                extrapolated · {b.rows.length} rows
-              </span>
+          {
+            title: "By workload",
+            rows: byWorkload,
+            isOutcome: false,
+            source: "extrapolated" as const,
+          },
+          {
+            title: "By outcome",
+            rows: byOutcome.rows,
+            isOutcome: true,
+            source: byOutcome.source,
+          },
+        ].map((b) => {
+          const isMeasured = b.source === "measured";
+          const tagBg = isMeasured
+            ? "color-mix(in oklab, var(--band-fast) 18%, transparent)"
+            : "var(--surf-3)";
+          const tagColor = isMeasured ? "var(--band-fast)" : "var(--text-3)";
+          const tagTitle = isMeasured
+            ? "Real paired-baseline dollars per outcome from /stats.aggregates.by_outcome."
+            : "Extrapolated from savings_vs_fixed_cap × cost/iter across the events sample. Not the paired-baseline measurement.";
+          return (
+            <div key={b.title} className="card">
+              <div className="card-h">
+                <h3>{b.title}</h3>
+                <span
+                  className="mono"
+                  style={{
+                    fontSize: 10.5,
+                    padding: "2px 6px",
+                    borderRadius: 3,
+                    background: tagBg,
+                    color: tagColor,
+                    letterSpacing: "0.04em",
+                  }}
+                  title={tagTitle}
+                >
+                  {b.source} · {b.rows.length} rows
+                </span>
+              </div>
+              <div style={{ padding: 14 }}>
+                <HBar
+                  rows={b.rows.slice(0, 10).map((r) => ({
+                    label: r.label,
+                    value: r.value,
+                    color: b.isOutcome ? OUTCOME_COLOR[r.label] ?? "var(--accent)" : "var(--accent)",
+                  }))}
+                  valueFmt={(v) => fmtUSD(v, { cents: isMeasured })}
+                />
+              </div>
             </div>
-            <div style={{ padding: 14 }}>
-              <HBar
-                rows={b.rows.slice(0, 10).map((r) => ({
-                  label: r.label,
-                  value: r.value,
-                  color: b.byOutcome ? OUTCOME_COLOR[r.label] ?? "var(--accent)" : "var(--accent)",
-                }))}
-                valueFmt={(v) => fmtUSD(v)}
-              />
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {series.length > 0 && (

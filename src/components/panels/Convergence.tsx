@@ -173,13 +173,14 @@ function ConvergenceBody({
               className="mono"
               style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}
             >
-              n=<span style={{ color: "var(--text-1)" }}>{fmtInt(events.length)}</span> sampled
-              {events.length < totalEvents && (
-                <> of {fmtInt(totalEvents)} fleet-wide</>
-              )}
+              n=<span style={{ color: "var(--text-1)" }}>{fmtInt(events.length)}</span>{" "}
+              {events.length < totalEvents
+                ? <>sampled of {fmtInt(totalEvents)} fleet-wide</>
+                : "runs"}
               {fleetMedian != null && (
                 <>
-                  {" · sample median "}
+                  {" · "}
+                  {events.length < totalEvents ? "sample" : "fleet"} median{" "}
                   <span style={{ color: "var(--text-1)" }}>{fleetMedian.toFixed(3)}</span>
                 </>
               )}

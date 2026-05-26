@@ -5,7 +5,7 @@ import { useEventDetail, useEvents, useStats } from "../../lib/data-hooks";
 import { bandFromEvent } from "../../lib/bands";
 import { fmtRel, fmtTime, fmtUSD, fmtInt } from "../../lib/format";
 import { median, percentile } from "../../lib/stats";
-import { Chip, Icon, KPI, PanelHeader, StatePill } from "../primitives";
+import { Chip, Icon, KPI, NoCase, PanelHeader, StatePill } from "../primitives";
 import { RingGauge, Sparkline, TrajectoryChart } from "../charts";
 import { Loaded } from "./PanelState";
 import { loopRouteId } from "../shell/routes";
@@ -163,18 +163,22 @@ function OverviewBody({
   // isn't. Most prod tenants should have aggregates; fallback exists so a
   // self-hosted older receiver still renders something rather than empty.
   //
-  // Aβ aggregates (ab_median, ab_p99) are deliberately not surfaced in the
-  // Overview KPI quad. On tenants with mostly TARGET_MET-at-iter-1 runs
-  // (bench is the canonical case) the receiver's COALESCE(profile_max, 0)
-  // drives ab_median to 0 — a number that's mechanically true but
-  // unreadable as a fleet stability summary. The headline % CONVERGED
-  // gauge covers this concern more honestly; per-run Aβ stays in Loop
-  // Detail where it has context.
+  // Receiver v0.3.1+ excludes rows with NULL profile_max from ab_median
+  // and ab_p99, so the headline Aβ numbers are now honest on tenants
+  // with lots of TARGET_MET-at-iter-1 runs (bench is the canonical case).
+  // Pre-v0.3.1 receivers will still return 0 here; the fallback path
+  // covers them.
+  const sampleAbValues = useMemo(
+    () => events.map((e) => e.profile_max),
+    [events],
+  );
   const sampleGmValues = useMemo(
     () => events.map((e) => e.gain_margin),
     [events],
   );
   const agg = stats.aggregates;
+  const abMedian = agg?.ab_median ?? median(sampleAbValues) ?? 0;
+  const abP99 = agg?.ab_p99 ?? percentile(sampleAbValues, 0.99) ?? 0;
   const gmMedian = agg?.gm_median ?? median(sampleGmValues) ?? 0;
   const gmP10 = agg?.gm_p10 ?? percentile(sampleGmValues, 0.1) ?? 0;
 
@@ -532,18 +536,14 @@ function OverviewBody({
         >
           {[
             {
-              label: "Attention rate",
-              value: totalEvents > 0
-                ? `${((attentionCount / totalEvents) * 100).toFixed(1)}%`
-                : "—",
-              sub: `${fmtInt(attentionCount)} OSC + DIV`,
+              label: <>Median A<NoCase>β</NoCase> (per-run max)</>,
+              value: abMedian.toFixed(2),
+              sub: "across measurable runs",
             },
             {
-              label: "Rollback rate",
-              value: totalEvents > 0
-                ? `${((totals.rollbacks / totalEvents) * 100).toFixed(1)}%`
-                : "—",
-              sub: `${fmtInt(totals.rollbacks)} of ${fmtInt(totalEvents)}`,
+              label: <>p99 A<NoCase>β</NoCase></>,
+              value: abP99.toFixed(2),
+              sub: "worst 1%",
             },
             {
               label: "Gain margin · median",
