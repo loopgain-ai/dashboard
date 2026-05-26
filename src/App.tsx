@@ -400,7 +400,7 @@ function BenchBanner() {
           flex: "0 0 auto",
         }}
       >
-        Sign up free → instrument your own loops
+        Install free → instrument your own loops
       </a>
     </div>
   );
