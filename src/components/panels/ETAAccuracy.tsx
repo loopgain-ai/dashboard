@@ -103,7 +103,7 @@ function ETAAccuracyBody({ events }: { events: ReadonlyArray<CalibrationEvent> }
 
   return (
     <>
-      <PanelHeader eyebrow="Panel 06" title="ETA Accuracy" />
+      <PanelHeader title="ETA Accuracy" />
 
       <div className="card eta-kpi-strip" style={{ padding: 0 }}>
         {[
@@ -526,18 +526,48 @@ function EmptyCalibration() {
       <div className="label" style={{ color: "var(--accent)", marginBottom: 8 }}>
         Awaiting eta-prediction samples
       </div>
-      <div style={{ color: "var(--text-2)", fontSize: 13, lineHeight: 1.6 }}>
+      <div
+        style={{
+          color: "var(--text-2)",
+          fontSize: 13,
+          lineHeight: 1.6,
+          maxWidth: 620,
+          margin: "0 auto",
+        }}
+      >
         No converged loops with a captured eta snapshot in the last 30 days.
-        <br />
-        Calibration data starts flowing once you run{" "}
-        <span className="mono" style={{ color: "var(--text-1)" }}>
-          loopgain &gt;= 0.1.4
-        </span>{" "}
-        with a non-zero{" "}
-        <span className="mono" style={{ color: "var(--text-1)" }}>
-          target_error
-        </span>{" "}
-        and the loop converges.
+        Three conditions all have to hold for a row to land here:
+        <ul
+          style={{
+            margin: "12px auto 4px",
+            padding: "0 0 0 18px",
+            textAlign: "left",
+            display: "inline-block",
+            color: "var(--text-2)",
+          }}
+        >
+          <li>
+            Library{" "}
+            <span className="mono" style={{ color: "var(--text-1)" }}>
+              loopgain ≥ 0.1.4
+            </span>{" "}
+            (earlier versions don't emit the snapshot).
+          </li>
+          <li>
+            Loop runs with a non-zero{" "}
+            <span className="mono" style={{ color: "var(--text-1)" }}>
+              target_error
+            </span>{" "}
+            so the predictor has a goal to estimate against.
+          </li>
+          <li>
+            Loop terminates as{" "}
+            <span className="mono" style={{ color: "var(--text-1)" }}>
+              converged
+            </span>{" "}
+            — calibration measures predicted-vs-actual on success only.
+          </li>
+        </ul>
       </div>
     </div>
   );

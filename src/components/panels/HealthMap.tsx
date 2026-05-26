@@ -33,6 +33,7 @@ export function HealthMap({ setRoute, pollMs, sinceHours }: Props) {
               <HealthMapBody
                 events={eventsData.events}
                 workloads={statsData.workloads}
+                totalEvents={statsData.totals?.event_count ?? eventsData.events.length}
                 setRoute={setRoute}
               />
             )}
@@ -46,10 +47,12 @@ export function HealthMap({ setRoute, pollMs, sinceHours }: Props) {
 function HealthMapBody({
   events,
   workloads,
+  totalEvents,
   setRoute,
 }: {
   events: ReadonlyArray<LoopEvent>;
   workloads: ReadonlyArray<{ workload_id: string | null; count: number }>;
+  totalEvents: number;
   setRoute: (r: RouteId) => void;
 }) {
   const [sizeBy, setSizeBy] = useState<SizeBy>("throughput");
@@ -72,7 +75,6 @@ function HealthMapBody({
   return (
     <>
       <PanelHeader
-        eyebrow="Panel 01"
         title="Loop Health Map"
         right={
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -213,7 +215,11 @@ function HealthMapBody({
         >
           <div className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>
             showing <span style={{ color: "var(--text-1)" }}>{fmtInt(visibleEvents.length)}</span>{" "}
-            of {fmtInt(events.length)} events · cells sized by {sizeBy}
+            of <span style={{ color: "var(--text-1)" }}>{fmtInt(events.length)}</span> sampled
+            {events.length < totalEvents && (
+              <> (of {fmtInt(totalEvents)} fleet-wide)</>
+            )}
+            {" · cells sized by "}{sizeBy}
           </div>
           <div style={{ display: "flex", gap: 14, fontSize: 10.5 }}>
             {BANDS.map((b) => (

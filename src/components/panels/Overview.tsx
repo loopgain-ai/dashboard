@@ -32,6 +32,17 @@ interface OutcomeCell {
   colorVar: string;
   matches: ReadonlyArray<Outcome>;
 }
+// Overview gauge bands for % CONVERGED. Oriented so higher = better:
+// the arc sweeps red (low %) → yellow → green (high %) left-to-right.
+// Breakpoints from GAUGE_TO_PCT_CONVERGED_KICKOFF.md: bench reads 64.6%
+// which lands squarely in green.
+const PCT_CONVERGED_BANDS = [
+  { from: 0, to: 30, color: "var(--band-div)" },
+  { from: 30, to: 50, color: "var(--band-stall)" },
+  { from: 50, to: 100, color: "var(--band-conv)" },
+] as const;
+const PCT_CONVERGED_TICKS = [30, 50] as const;
+
 const OUTCOME_CELLS: ReadonlyArray<OutcomeCell> = [
   {
     key: "converged",
@@ -138,23 +149,32 @@ function OverviewBody({
   const attentionCount =
     (outcomeCounts["oscillating"] ?? 0) + (outcomeCounts["diverged"] ?? 0);
   const hasDiverged = (outcomeCounts["diverged"] ?? 0) > 0;
+  // % CONVERGED — the headline Overview gauge metric. Sourced from the same
+  // server-side outcome counts as the strip below, so the two readings agree
+  // by construction. See GAUGE_TO_PCT_CONVERGED_KICKOFF.md for why this
+  // replaced the Aβ_MEDIAN gauge (category mismatch: TARGET_MET-at-iter-1
+  // trials never had Aβ measured, so the median was an aggregation artifact).
+  const convergedCount = outcomeCounts["converged"] ?? 0;
+  const pctConverged = totalEvents > 0 ? (convergedCount / totalEvents) * 100 : 0;
 
   // Tenant-wide percentile aggregates from /v1/stats.aggregates when present
   // (newer receiver), else fall back to client-medians over the /events
   // sample (older receiver). The fallback is recency-biased; the server path
   // isn't. Most prod tenants should have aggregates; fallback exists so a
   // self-hosted older receiver still renders something rather than empty.
-  const sampleAbValues = useMemo(
-    () => events.map((e) => e.profile_max),
-    [events],
-  );
+  //
+  // Aβ aggregates (ab_median, ab_p99) are deliberately not surfaced in the
+  // Overview KPI quad. On tenants with mostly TARGET_MET-at-iter-1 runs
+  // (bench is the canonical case) the receiver's COALESCE(profile_max, 0)
+  // drives ab_median to 0 — a number that's mechanically true but
+  // unreadable as a fleet stability summary. The headline % CONVERGED
+  // gauge covers this concern more honestly; per-run Aβ stays in Loop
+  // Detail where it has context.
   const sampleGmValues = useMemo(
     () => events.map((e) => e.gain_margin),
     [events],
   );
   const agg = stats.aggregates;
-  const abMedian = agg?.ab_median ?? median(sampleAbValues) ?? 0;
-  const abP99 = agg?.ab_p99 ?? percentile(sampleAbValues, 0.99) ?? 0;
   const gmMedian = agg?.gm_median ?? median(sampleGmValues) ?? 0;
   const gmP10 = agg?.gm_p10 ?? percentile(sampleGmValues, 0.1) ?? 0;
 
@@ -305,7 +325,12 @@ function OverviewBody({
           <div style={{ display: "flex", justifyContent: "center", paddingTop: 8 }}>
             <div style={{ width: "100%", maxWidth: 240, aspectRatio: "1 / 1" }}>
               <RingGauge
-                value={abMedian}
+                value={pctConverged}
+                label="% CONVERGED"
+                valueMax={100}
+                bands={PCT_CONVERGED_BANDS}
+                ticks={PCT_CONVERGED_TICKS}
+                format={(v) => `${v.toFixed(1)}%`}
                 sub={`across ${fmtInt(totalEvents)} loop events`}
               />
             </div>
@@ -507,14 +532,18 @@ function OverviewBody({
         >
           {[
             {
-              label: "Median Aβ (per-run max)",
-              value: abMedian.toFixed(3),
-              sub: "across all events",
+              label: "Attention rate",
+              value: totalEvents > 0
+                ? `${((attentionCount / totalEvents) * 100).toFixed(1)}%`
+                : "—",
+              sub: `${fmtInt(attentionCount)} OSC + DIV`,
             },
             {
-              label: "p99 Aβ",
-              value: abP99.toFixed(3),
-              sub: "worst 1%",
+              label: "Rollback rate",
+              value: totalEvents > 0
+                ? `${((totals.rollbacks / totalEvents) * 100).toFixed(1)}%`
+                : "—",
+              sub: `${fmtInt(totals.rollbacks)} of ${fmtInt(totalEvents)}`,
             },
             {
               label: "Gain margin · median",

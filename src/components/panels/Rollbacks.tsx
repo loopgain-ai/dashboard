@@ -31,6 +31,7 @@ export function Rollbacks({ pollMs, sinceHours }: Props) {
               <RollbacksBody
                 events={eventsData.events}
                 customerId={statsData.customer_id}
+                totalRollbacks={statsData.totals?.rollbacks ?? eventsData.events.length}
               />
             )}
           </Loaded>
@@ -43,9 +44,11 @@ export function Rollbacks({ pollMs, sinceHours }: Props) {
 function RollbacksBody({
   events,
   customerId,
+  totalRollbacks,
 }: {
   events: ReadonlyArray<LoopEvent>;
   customerId: string;
+  totalRollbacks: number;
 }) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [trigFilter, setTrigFilter] = useState<Band | null>(null);
@@ -134,16 +137,24 @@ function RollbacksBody({
   return (
     <>
       <PanelHeader
-        eyebrow="Panel 05"
         title="Rollback Log"
         right={
-          <div style={{ display: "flex", gap: 8 }}>
-            <Chip icon={<Icon.Download />} onClick={exportCsv}>
-              CSV
-            </Chip>
-            <Chip icon={<Icon.Download />} onClick={exportJson}>
-              JSON
-            </Chip>
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <span className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>
+              <span style={{ color: "var(--text-1)" }}>{fmtInt(events.length)}</span>
+              {events.length < totalRollbacks && (
+                <> of <span style={{ color: "var(--text-1)" }}>{fmtInt(totalRollbacks)}</span> rollbacks</>
+              )}
+              {events.length >= totalRollbacks && <> rollbacks</>}
+            </span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Chip icon={<Icon.Download />} onClick={exportCsv}>
+                CSV
+              </Chip>
+              <Chip icon={<Icon.Download />} onClick={exportJson}>
+                JSON
+              </Chip>
+            </div>
           </div>
         }
       />

@@ -5,13 +5,13 @@
 // (healthy). Hover reveals which workloads landed in each bucket.
 
 import { useMemo, useState } from "react";
-import { useEvents } from "../../lib/data-hooks";
+import { useEvents, useStats } from "../../lib/data-hooks";
 import { Histogram } from "../charts";
 import { KPI, PanelHeader } from "../primitives";
 import { Loaded } from "./PanelState";
 import { histogram, linEdges, median, percentile, type Bucket } from "../../lib/stats";
 import { fmtInt, fmtPct } from "../../lib/format";
-import type { LoopEvent } from "../../types";
+import type { LoopEvent, StatsResponse } from "../../types";
 
 interface Props {
   pollMs?: number;
@@ -20,16 +20,29 @@ interface Props {
 
 export function GainMargin({ pollMs, sinceHours }: Props) {
   const events = useEvents({ pollMs, sinceHours });
+  const stats = useStats({ pollMs });
   return (
     <div style={{ padding: 24 }}>
       <Loaded state={events.state}>
-        {(eventsData) => <GainMarginBody events={eventsData.events} />}
+        {(eventsData) => (
+          <Loaded state={stats.state}>
+            {(statsData) => (
+              <GainMarginBody events={eventsData.events} stats={statsData} />
+            )}
+          </Loaded>
+        )}
       </Loaded>
     </div>
   );
 }
 
-function GainMarginBody({ events }: { events: ReadonlyArray<LoopEvent> }) {
+function GainMarginBody({
+  events,
+  stats,
+}: {
+  events: ReadonlyArray<LoopEvent>;
+  stats: StatsResponse;
+}) {
   const [hover, setHover] = useState<Bucket | null>(null);
 
   const eventsWithGM = useMemo(
@@ -37,9 +50,16 @@ function GainMarginBody({ events }: { events: ReadonlyArray<LoopEvent> }) {
     [events],
   );
 
-  const gms = useMemo(() => eventsWithGM.map((e) => e.gain_margin!), [eventsWithGM]);
-  const gmMedian = median(gms) ?? 0;
-  const gmP10 = percentile(gms, 0.1) ?? 0;
+  // Tenant-wide median/p10 come from the server (/stats.aggregates), not
+  // from the local 500-event sample — otherwise this page disagrees with
+  // the Overview KPI quad and Loop Detail. The histogram below still
+  // shows the sample distribution (no server-side histogram endpoint),
+  // but the headline KPIs match what the rest of the dashboard reports.
+  const sampleGms = useMemo(() => eventsWithGM.map((e) => e.gain_margin!), [eventsWithGM]);
+  const agg = stats.aggregates;
+  const gmMedian = agg?.gm_median ?? median(sampleGms) ?? 0;
+  const gmP10 = agg?.gm_p10 ?? percentile(sampleGms, 0.1) ?? 0;
+  const totalEvents = stats.totals?.event_count ?? eventsWithGM.length;
   const belowRisky = eventsWithGM.filter((e) => e.gain_margin! < 1.2).length;
   const belowInstability = eventsWithGM.filter((e) => e.gain_margin! < 1.0).length;
   const pctBelowRisky = eventsWithGM.length > 0 ? belowRisky / eventsWithGM.length : 0;
@@ -55,25 +75,25 @@ function GainMarginBody({ events }: { events: ReadonlyArray<LoopEvent> }) {
 
   return (
     <>
-      <PanelHeader eyebrow="Panel 04" title="Gain Margin Distribution" />
+      <PanelHeader title="Gain Margin Distribution" />
 
       <div className="card gm-kpi-strip" style={{ padding: 0 }}>
         {[
           {
             label: "Median GM",
             value: gmMedian.toFixed(2),
-            sub: `${fmtInt(eventsWithGM.length)} events`,
+            sub: `${fmtInt(totalEvents)} events · fleet-wide`,
           },
-          { label: "p10 GM", value: gmP10.toFixed(2), sub: "worst 10%" },
+          { label: "p10 GM", value: gmP10.toFixed(2), sub: "worst 10% · fleet-wide" },
           {
             label: "GM < 1.2",
             value: fmtPct(pctBelowRisky),
-            sub: `${fmtInt(belowRisky)} events · risky band`,
+            sub: `${fmtInt(belowRisky)} of ${fmtInt(eventsWithGM.length)} sampled · risky band`,
           },
           {
             label: "GM < 1.0",
             value: fmtInt(belowInstability),
-            sub: "past instability boundary",
+            sub: `of ${fmtInt(eventsWithGM.length)} sampled · past instability`,
           },
         ].map((k, i) => (
           <div

@@ -23,7 +23,7 @@ export function Alerts({ setRoute }: Props) {
 
   return (
     <div style={{ padding: 24 }}>
-      <PanelHeader eyebrow="Panel 08" title="Alerts" />
+      <PanelHeader title="Alerts" />
 
       <Loaded state={deliveries.state}>
         {(d) => (

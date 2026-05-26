@@ -156,7 +156,6 @@ function WasteBody({
   return (
     <>
       <PanelHeader
-        eyebrow="Panel 03"
         title="Waste Report"
         right={
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -199,7 +198,25 @@ function WasteBody({
 
       <div className="card waste-hero" style={{ padding: 28 }}>
         <div>
-          <div className="label">Saved by LoopGain · 30d</div>
+          <div className="label">
+            Saved by LoopGain · 30d
+            {hasActualSavings && (
+              <span
+                className="mono"
+                style={{
+                  marginLeft: 10,
+                  fontSize: 9.5,
+                  padding: "2px 6px",
+                  borderRadius: 3,
+                  background: "color-mix(in oklab, var(--band-fast) 18%, transparent)",
+                  color: "var(--band-fast)",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                MEASURED · PAIRED BASELINE
+              </span>
+            )}
+          </div>
           <div
             className="mono"
             style={{
@@ -241,6 +258,20 @@ function WasteBody({
               {fmtInt(totals.rollbacks)} rollbacks executed in window
             </span>
           </div>
+          {hasActualSavings && (
+            <div
+              style={{
+                marginTop: 10,
+                fontSize: 11,
+                color: "var(--text-3)",
+                maxWidth: 460,
+                lineHeight: 1.45,
+              }}
+            >
+              Real cost delta vs. matched no-LoopGain runs of the same workload.
+              Cents-precision; not an extrapolation.
+            </div>
+          )}
         </div>
 
         <div
@@ -255,7 +286,23 @@ function WasteBody({
           }}
         >
           <div>
-            <div className="label">Counterfactual · would have spent</div>
+            <div className="label">
+              Extrapolated · would have spent
+              <span
+                className="mono"
+                style={{
+                  marginLeft: 8,
+                  fontSize: 9.5,
+                  padding: "2px 6px",
+                  borderRadius: 3,
+                  background: "var(--surf-3)",
+                  color: "var(--text-3)",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                ESTIMATE · ${costPerIter.toFixed(2)}/ITER
+              </span>
+            </div>
             <div
               className="mono"
               style={{
@@ -272,7 +319,7 @@ function WasteBody({
             </div>
           </div>
           <div>
-            <div className="label">Actual spend</div>
+            <div className="label">Actual spend · extrapolated</div>
             <div
               className="mono"
               style={{
@@ -301,8 +348,12 @@ function WasteBody({
           <div key={b.title} className="card">
             <div className="card-h">
               <h3>{b.title}</h3>
-              <span className="mono" style={{ fontSize: 10.5, color: "var(--text-3)" }}>
-                {b.rows.length}
+              <span
+                className="mono"
+                style={{ fontSize: 10.5, color: "var(--text-3)" }}
+                title="Extrapolated from savings_vs_fixed_cap × cost/iter across the events sample. Not the paired-baseline measurement."
+              >
+                extrapolated · {b.rows.length} rows
               </span>
             </div>
             <div style={{ padding: 14 }}>
@@ -335,7 +386,7 @@ function WasteBody({
                 className="mono"
                 style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}
               >
-                {series.length} days · actual spend (lower) + savings layer
+                {series.length} {series.length === 1 ? "day" : "days"} · actual spend (lower) + savings layer
               </div>
             </div>
             <div style={{ display: "flex", gap: 14, fontSize: 11 }}>

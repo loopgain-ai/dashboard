@@ -1,13 +1,43 @@
-// Ring gauge: value mapped to a 270° arc colored by the 5 Aβ bands.
+// Ring gauge: value mapped to a 270° arc, colored by caller-supplied bands.
+//
+// Originally hardcoded for Aβ (label "Aβ_MEDIAN", 5 bands FAST→DIV across
+// [0, 1.4]). Lifted to props so the same component can also render
+// % CONVERGED on the Overview / benchmark view — different label, value
+// range, format, and band layout (higher = better, so green sits on the
+// high end of the arc instead of the low end). All visual behavior
+// (270° sweep starting at lower-left, opacity rule for "value-or-below"
+// bands, indicator dot) is unchanged.
+
+interface BandSpec {
+  from: number;
+  to: number;
+  color: string;
+}
 
 interface Props {
   value: number;
+  label: string;
+  valueMax: number;
+  bands: ReadonlyArray<BandSpec>;
+  /** Formatter for the big number in the middle of the gauge. */
+  format?: (v: number) => string;
+  /** Tick marks across the arc. Defaults to interior band boundaries. */
+  ticks?: ReadonlyArray<number>;
   size?: number;
   sub?: string;
 }
 
-export function RingGauge({ value, size = 220, sub }: Props) {
-  const clamped = Math.max(0, Math.min(1.4, value));
+export function RingGauge({
+  value,
+  label,
+  valueMax,
+  bands,
+  format,
+  ticks,
+  size = 220,
+  sub,
+}: Props) {
+  const clamped = Math.max(0, Math.min(valueMax, value));
   const r = size / 2 - 14;
   const cx = size / 2;
   const cy = size / 2;
@@ -24,18 +54,13 @@ export function RingGauge({ value, size = 220, sub }: Props) {
     return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
   }
 
-  const bands = [
-    { from: 0, to: 0.3, color: "var(--band-fast)" },
-    { from: 0.3, to: 0.85, color: "var(--band-conv)" },
-    { from: 0.85, to: 0.95, color: "var(--band-stall)" },
-    { from: 0.95, to: 1.05, color: "var(--band-osc)" },
-    { from: 1.05, to: 1.4, color: "var(--band-div)" },
-  ] as const;
-
-  const toAng = (v: number): number => startA + (v / 1.4) * span;
+  const toAng = (v: number): number => startA + (v / valueMax) * span;
   const indA = toAng(clamped);
   const indX = cx + r * Math.cos(indA);
   const indY = cy + r * Math.sin(indA);
+
+  const tickValues = ticks ?? bands.slice(1).map((b) => b.from);
+  const fmt = format ?? ((v: number) => v.toFixed(3));
 
   return (
     <svg
@@ -56,7 +81,7 @@ export function RingGauge({ value, size = 220, sub }: Props) {
           strokeOpacity={value >= b.from ? 0.95 : 0.32}
         />
       ))}
-      {[0.3, 0.85, 0.95, 1.05].map((t, i) => {
+      {tickValues.map((t, i) => {
         const a = toAng(t);
         const x1 = cx + (r - 12) * Math.cos(a);
         const y1 = cy + (r - 12) * Math.sin(a);
@@ -74,7 +99,7 @@ export function RingGauge({ value, size = 220, sub }: Props) {
         fill="var(--text-3)"
         letterSpacing="0.06em"
       >
-        Aβ_MEDIAN
+        {label}
       </text>
       <text
         x={cx}
@@ -86,7 +111,7 @@ export function RingGauge({ value, size = 220, sub }: Props) {
         fill="var(--text-1)"
         letterSpacing="-0.02em"
       >
-        {value.toFixed(3)}
+        {fmt(value)}
       </text>
       {sub && (
         <text x={cx} y={cy + 46} textAnchor="middle" fontFamily="var(--sans)" fontSize="11" fill="var(--text-3)">

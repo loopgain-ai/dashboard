@@ -1,7 +1,9 @@
+import type { ReactNode } from "react";
+
 interface Props {
-  label: string;
+  label: ReactNode;
   value: string | number;
-  sub?: string;
+  sub?: ReactNode;
   delta?: number;
   deltaGood?: boolean;
   mono?: boolean;

@@ -35,7 +35,6 @@ export function Convergence({ pollMs, sinceHours }: Props) {
         {(statsData) => (
           <>
             <PanelHeader
-              eyebrow="Panel 02"
               title="Convergence Profiles"
               right={
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -108,6 +107,7 @@ export function Convergence({ pollMs, sinceHours }: Props) {
               {(profilesData) => (
                 <ConvergenceBody
                   events={profilesData.events}
+                  totalEvents={statsData.totals?.event_count ?? profilesData.events.length}
                   yMax={yMax}
                   showTrend={showTrend}
                 />
@@ -122,10 +122,12 @@ export function Convergence({ pollMs, sinceHours }: Props) {
 
 function ConvergenceBody({
   events,
+  totalEvents,
   yMax,
   showTrend,
 }: {
   events: ReadonlyArray<ProfileEvent>;
+  totalEvents: number;
   yMax: number;
   showTrend: boolean;
 }) {
@@ -171,10 +173,13 @@ function ConvergenceBody({
               className="mono"
               style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}
             >
-              n=<span style={{ color: "var(--text-1)" }}>{fmtInt(events.length)}</span> runs
+              n=<span style={{ color: "var(--text-1)" }}>{fmtInt(events.length)}</span> sampled
+              {events.length < totalEvents && (
+                <> of {fmtInt(totalEvents)} fleet-wide</>
+              )}
               {fleetMedian != null && (
                 <>
-                  {" · fleet median "}
+                  {" · sample median "}
                   <span style={{ color: "var(--text-1)" }}>{fleetMedian.toFixed(3)}</span>
                 </>
               )}

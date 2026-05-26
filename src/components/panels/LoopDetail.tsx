@@ -6,7 +6,7 @@
 // Schema v3 (loopgain >= 0.1.6) is required for per-iteration data;
 // older runs render the per-run summary only.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useEventDetail, useProfiles } from "../../lib/data-hooks";
 import { BAND_COLOR, bandFromProfileEvent, outcomeLabel } from "../../lib/bands";
 import { Chip, Icon, KPI, StatePill } from "../primitives";
@@ -128,7 +128,7 @@ function LoopDetailBody({
         <div className="mono" style={{ fontSize: 18, fontWeight: 500, color: "var(--text-1)" }}>
           {workloadId}
         </div>
-        <Chip>{fmtInt(events.length)} runs</Chip>
+        <Chip>{fmtInt(events.length)} {events.length === 1 ? "run" : "runs"}</Chip>
         <span style={{ flex: 1 }} />
         <StatePill band={currentBand} size="lg" />
       </div>
@@ -139,12 +139,12 @@ function LoopDetailBody({
       >
         {[
           {
-            label: "Latest Aβ_max",
+            label: <>Latest A<NoCase>β</NoCase>_max</>,
             value: latest.profile_max != null ? latest.profile_max.toFixed(3) : "—",
             color: BAND_COLOR[currentBand],
           },
           {
-            label: "Median Aβ (window)",
+            label: <>Median A<NoCase>β</NoCase> (window)</>,
             value: medianAB != null ? medianAB.toFixed(3) : "—",
           },
           {
@@ -496,5 +496,14 @@ function ScrubberError({ message }: { message: string }) {
       </div>
     </div>
   );
+}
+
+// The .label class applies text-transform: uppercase site-wide. β.toUpperCase()
+// is the Greek capital beta U+0392, which renders visually as "B" in most
+// fonts — so "Aβ" gets shown as "AB" in any uppercase KPI label. This
+// wrapper opts a span back out of the uppercase transform so the lowercase
+// β stays visible.
+function NoCase({ children }: { children: ReactNode }) {
+  return <span style={{ textTransform: "none" }}>{children}</span>;
 }
 

@@ -199,13 +199,21 @@
 }
 
 /* ── Band-counts strip inside the gauge card (container-query) ──────── */
+/* Flex layout so the row centers when the tenant has fewer outcome
+ * cells than the max (e.g. bench has only 3 of 4: CONV/OSC/DIV, no
+ * STALL). Grid would leave them left-aligned in the first N columns. */
 .band-strip {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  row-gap: 14px;
   border-top: 1px solid var(--border);
   padding-top: 18px;
 }
 .band-strip .band-cell {
+  flex: 1 1 auto;
+  min-width: 80px;
+  max-width: 160px;
   padding: 0 12px;
   border-left: 1px solid var(--border);
   text-align: center;
@@ -218,19 +226,46 @@
   letter-spacing: -0.02em;
 }
 
-/* At narrow card widths, the 5 large numerics overflow. Compress in stages. */
+/* At narrow card widths, the large numerics overflow. Compress in stages. */
 @container card (max-width: 460px) {
   .band-strip .band-cell { padding: 0 6px; }
   .band-strip .band-cell-num { font-size: 22px; }
 }
 @container card (max-width: 360px) {
-  .band-strip { grid-template-columns: repeat(3, 1fr); row-gap: 14px; }
-  .band-strip .band-cell { border-left: none !important; }
-  .band-strip .band-cell:nth-child(3n+1) { border-left: none !important; }
+  .band-strip .band-cell { border-left: none; }
   .band-strip .band-cell-num { font-size: 22px; }
 }
-@container card (max-width: 240px) {
-  .band-strip { grid-template-columns: repeat(2, 1fr); }
+
+/* ── Trajectory chart wrapper (legend + caption around the SVG) ─────── */
+.trajectory-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-2);
+  margin-bottom: 8px;
+}
+.trajectory-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.trajectory-legend-swatch {
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  display: inline-block;
+}
+.trajectory-legend-axis {
+  color: var(--text-3);
+  margin-left: 4px;
+}
+.trajectory-caption {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-3);
+  line-height: 1.45;
 }
 
 /* ── Recent-runs feed row (compress at narrow widths) ───────────────── */
