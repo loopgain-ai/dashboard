@@ -6,7 +6,7 @@ import { bandFromEvent } from "../../lib/bands";
 import { fmtRel, fmtTime, fmtUSD, fmtInt } from "../../lib/format";
 import { median, percentile } from "../../lib/stats";
 import { Chip, Icon, KPI, NoCase, PanelHeader, StatePill } from "../primitives";
-import { RingGauge, Sparkline, TrajectoryChart } from "../charts";
+import { OutcomeDonut, Sparkline, TrajectoryChart } from "../charts";
 import { Loaded } from "./PanelState";
 import { loopRouteId } from "../shell/routes";
 import type { RouteId, TimeRange } from "../shell";
@@ -32,17 +32,6 @@ interface OutcomeCell {
   colorVar: string;
   matches: ReadonlyArray<Outcome>;
 }
-// Overview gauge bands for % CONVERGED. Oriented so higher = better:
-// the arc sweeps red (low %) → yellow → green (high %) left-to-right.
-// Breakpoints from GAUGE_TO_PCT_CONVERGED_KICKOFF.md: bench reads 64.6%
-// which lands squarely in green.
-const PCT_CONVERGED_BANDS = [
-  { from: 0, to: 30, color: "var(--band-div)" },
-  { from: 30, to: 50, color: "var(--band-stall)" },
-  { from: 50, to: 100, color: "var(--band-conv)" },
-] as const;
-const PCT_CONVERGED_TICKS = [30, 50] as const;
-
 const OUTCOME_CELLS: ReadonlyArray<OutcomeCell> = [
   {
     key: "converged",
@@ -149,14 +138,6 @@ function OverviewBody({
   const attentionCount =
     (outcomeCounts["oscillating"] ?? 0) + (outcomeCounts["diverged"] ?? 0);
   const hasDiverged = (outcomeCounts["diverged"] ?? 0) > 0;
-  // % CONVERGED — the headline Overview gauge metric. Sourced from the same
-  // server-side outcome counts as the strip below, so the two readings agree
-  // by construction. See GAUGE_TO_PCT_CONVERGED_KICKOFF.md for why this
-  // replaced the Aβ_MEDIAN gauge (category mismatch: TARGET_MET-at-iter-1
-  // trials never had Aβ measured, so the median was an aggregation artifact).
-  const convergedCount = outcomeCounts["converged"] ?? 0;
-  const pctConverged = totalEvents > 0 ? (convergedCount / totalEvents) * 100 : 0;
-
   // Tenant-wide percentile aggregates from /v1/stats.aggregates when present
   // (newer receiver), else fall back to client-medians over the /events
   // sample (older receiver). The fallback is recency-biased; the server path
@@ -328,14 +309,15 @@ function OverviewBody({
         >
           <div style={{ display: "flex", justifyContent: "center", paddingTop: 8 }}>
             <div style={{ width: "100%", maxWidth: 240, aspectRatio: "1 / 1" }}>
-              <RingGauge
-                value={pctConverged}
-                label="% CONVERGED"
-                valueMax={100}
-                bands={PCT_CONVERGED_BANDS}
-                ticks={PCT_CONVERGED_TICKS}
-                format={(v) => `${v.toFixed(1)}%`}
-                sub={`across ${fmtInt(totalEvents)} loop events`}
+              <OutcomeDonut
+                slices={visibleCells.map((cell) => ({
+                  label: cell.short,
+                  count: cell.count,
+                  color: cell.colorVar,
+                }))}
+                centerLabel="LOOP EVENTS"
+                centerValue={fmtInt(totalEvents)}
+                centerSub="outcome distribution"
               />
             </div>
           </div>
@@ -371,17 +353,6 @@ function OverviewBody({
                 </div>
               );
             })}
-          </div>
-          <div
-            className="mono"
-            style={{
-              fontSize: 10,
-              color: "var(--text-3)",
-              textAlign: "center",
-              marginTop: -6,
-            }}
-          >
-            outcome distribution · {fmtInt(totalEvents)} loop events
           </div>
         </div>
 
