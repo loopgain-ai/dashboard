@@ -370,11 +370,11 @@ function WasteBody({
         >
           <div>
             <div className="label">
-              {hasActualSpend ? "Measured" : "Extrapolated"} · would have spent
+              Would have spent
               <span
                 className="mono"
                 style={{
-                  marginLeft: 8,
+                  marginLeft: 10,
                   fontSize: 9.5,
                   padding: "2px 6px",
                   borderRadius: 3,
@@ -386,8 +386,8 @@ function WasteBody({
                 }}
               >
                 {hasActualSpend
-                  ? "PAIRED BASELINE"
-                  : `ESTIMATE · $${costPerIter.toFixed(2)}/ITER`}
+                  ? "MEASURED · PAIRED BASELINE"
+                  : `EXTRAPOLATED · $${costPerIter.toFixed(2)}/ITER`}
               </span>
             </div>
             <div
@@ -407,7 +407,25 @@ function WasteBody({
           </div>
           <div>
             <div className="label">
-              Actual spend · {hasActualSpend ? "measured" : "extrapolated"}
+              Actual spend
+              <span
+                className="mono"
+                style={{
+                  marginLeft: 10,
+                  fontSize: 9.5,
+                  padding: "2px 6px",
+                  borderRadius: 3,
+                  background: hasActualSpend
+                    ? "color-mix(in oklab, var(--band-fast) 18%, transparent)"
+                    : "var(--surf-3)",
+                  color: hasActualSpend ? "var(--band-fast)" : "var(--text-3)",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                {hasActualSpend
+                  ? "MEASURED · PAIRED BASELINE"
+                  : `EXTRAPOLATED · $${costPerIter.toFixed(2)}/ITER`}
+              </span>
             </div>
             <div
               className="mono"
