@@ -79,8 +79,22 @@ function WasteBody({
   const saved = hasActualSavings
     ? (totals.total_actual_dollars_saved as number)
     : totals.total_savings * costPerIter;
-  const counterfactual = (totals.total_iterations + totals.total_savings) * costPerIter;
   const actualSpend = totals.total_iterations * costPerIter;
+  // Counterfactual = what the user would have spent with no LoopGain in
+  // the loop. Three flavors of "would have spent" exist:
+  //   - measured + extrapolated (paired-baseline tenants): the saved $
+  //     is real; actual spend is iter × $/iter. counterfactual = saved
+  //     + actual_spend, which makes the three numbers add up.
+  //   - pure extrapolation (no paired baseline): treat every avoided
+  //     iteration as if it would have run at $/iter — counterfactual
+  //     = (used + avoided) × $/iter.
+  // Pre-fix the dashboard used the pure extrapolation in both branches
+  // and sat the measured $25.81 next to a $900-ish counterfactual that
+  // had no relationship to it. Now the saved + actual_spend = would
+  // have spent identity holds.
+  const counterfactual = hasActualSavings
+    ? saved + actualSpend
+    : (totals.total_iterations + totals.total_savings) * costPerIter;
 
   // Breakdown by workload_id from events
   const byWorkload = useMemo(() => {
@@ -138,8 +152,21 @@ function WasteBody({
   }, [events, costPerIter, stats.aggregates?.by_outcome]);
 
   // Daily time series — bucket events into days, compute saved + would-have-spent.
+  //
+  // Pre-fix the saved layer used (savings_vs_fixed_cap × $/iter) per
+  // event, which on a paired-baseline tenant overstates daily savings
+  // by ~100× vs. the measured headline. Now we scale each event's
+  // contribution by (measured_total / extrapolated_total) so the daily
+  // saved values integrate to the headline $25.81 while preserving
+  // when the events actually happened. Non-paired tenants fall back to
+  // the pure extrapolation since they have no measured anchor.
   const series = useMemo(() => {
     if (events.length === 0) return [];
+    const extrapolatedSavedTotal = totals.total_savings * costPerIter;
+    const savedScale =
+      hasActualSavings && extrapolatedSavedTotal > 0
+        ? saved / extrapolatedSavedTotal
+        : 1;
     const m = new Map<number, { saved: number; spent: number }>();
     const dayOf = (ts: number) => Math.floor(ts / 86400) * 86400;
     let minDay = Infinity;
@@ -148,14 +175,14 @@ function WasteBody({
       const day = dayOf(e.timestamp_hour);
       if (day < minDay) minDay = day;
       if (day > maxDay) maxDay = day;
-      const saved = (e.savings_vs_fixed_cap ?? 0) * costPerIter;
-      const spent = e.iterations_used * costPerIter;
+      const eventSaved = (e.savings_vs_fixed_cap ?? 0) * costPerIter * savedScale;
+      const eventSpent = e.iterations_used * costPerIter;
       const slot = m.get(day);
       if (slot) {
-        slot.saved += saved;
-        slot.spent += spent;
+        slot.saved += eventSaved;
+        slot.spent += eventSpent;
       } else {
-        m.set(day, { saved, spent });
+        m.set(day, { saved: eventSaved, spent: eventSpent });
       }
     }
     const out: Array<{ ts: number; saved: number; spent: number; counterfactual: number }> = [];
@@ -169,7 +196,7 @@ function WasteBody({
       });
     }
     return out;
-  }, [events, costPerIter]);
+  }, [events, costPerIter, hasActualSavings, saved, totals.total_savings]);
 
   function fmtTick(i: number, n: number): string {
     const p = series[i];
