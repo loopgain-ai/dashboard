@@ -5,3 +5,6 @@ node_modules/
 dist/
 .vite/
 *.tsbuildinfo
+
+# planning/brainstorm session briefs — never commit
+*KICKOFF.md
