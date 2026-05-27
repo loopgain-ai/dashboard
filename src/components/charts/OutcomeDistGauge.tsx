@@ -61,6 +61,12 @@ export function OutcomeDistGauge({
   const startA = Math.PI * 0.75;
   const endA = Math.PI * 0.25 + Math.PI * 2;
   const span = endA - startA;
+  // 6px visual gap between adjacent bands so each band reads as a
+  // distinct lit segment rather than a continuous ring — also breaks
+  // simultaneous-contrast desaturation between touching saturated colors.
+  // Gap measured along the arc (px) → radians at this radius.
+  const BAND_GAP_PX = 6;
+  const halfGap = BAND_GAP_PX / 2 / r;
 
   function arcPath(from: number, to: number): string {
     const x1 = cx + r * Math.cos(from);
@@ -107,21 +113,31 @@ export function OutcomeDistGauge({
         strokeWidth="14"
         fill="none"
       />
-      {/* Proportional outcome-distribution arcs. Zero-count slices
-          produce zero-width arcs, which SVG renders as nothing — no
-          guard needed beyond the .filter call in the caller. */}
-      {arcs.map((a, i) =>
-        a.count > 0 ? (
-          <path
-            key={i}
-            d={arcPath(toAng(a.startPct), toAng(a.endPct))}
-            stroke={a.color}
-            strokeWidth="14"
-            fill="none"
-            strokeOpacity="1"
-          />
-        ) : null,
-      )}
+      {/* Proportional outcome-distribution arcs. Filter to non-zero
+          slices first so the gap-trim logic only counts arcs that will
+          actually render — adjacent arcs get their inner edges pulled
+          inward by halfGap so the visible gap between them is exactly
+          BAND_GAP_PX. The first arc's outer-left edge and the last
+          arc's outer-right edge keep their natural endpoints (no
+          neighbor on that side to gap against). */}
+      {arcs
+        .filter((a) => a.count > 0)
+        .map((a, i, rendered) => {
+          const isFirst = i === 0;
+          const isLast = i === rendered.length - 1;
+          const fromAng = toAng(a.startPct) + (isFirst ? 0 : halfGap);
+          const toAngE = toAng(a.endPct) - (isLast ? 0 : halfGap);
+          return (
+            <path
+              key={i}
+              d={arcPath(fromAng, toAngE)}
+              stroke={a.color}
+              strokeWidth="14"
+              fill="none"
+              strokeOpacity="1"
+            />
+          );
+        })}
       {/* Indicator dot at the value position on the same axis. Same
           visual as RingGauge's dot so it reads as a familiar gauge
           marker, not a chart annotation. */}
