@@ -5,8 +5,12 @@ import { useEventDetail, useEvents, useStats } from "../../lib/data-hooks";
 import { bandFromEvent } from "../../lib/bands";
 import { fmtRel, fmtTime, fmtUSD, fmtInt } from "../../lib/format";
 import { median, percentile } from "../../lib/stats";
-import { Chip, Icon, KPI, NoCase, PanelHeader, StatePill } from "../primitives";
-import { OutcomeDonut, Sparkline, TrajectoryChart } from "../charts";
+// Hardcoded fixed-cap baseline used in the "Iterations · 30d" tile. Matches
+// `max_iter=20` from the bench protocol; for paying-customer fleet view this
+// should be sourced from tenant config when that view ships.
+const FIXED_CAP_BASELINE = 20;
+import { Chip, Icon, KPI, PanelHeader, StatePill } from "../primitives";
+import { OutcomeDistGauge, Sparkline, TrajectoryChart } from "../charts";
 import { Loaded } from "./PanelState";
 import { loopRouteId } from "../shell/routes";
 import type { RouteId, TimeRange } from "../shell";
@@ -32,20 +36,18 @@ interface OutcomeCell {
   colorVar: string;
   matches: ReadonlyArray<Outcome>;
 }
+// Order is worst→best so the gauge arc reads left-to-right as
+// DIV → OSC → STALL → CONV (matching control-theory convention: bad
+// outcomes on the left, healthy on the right). The strip below the
+// gauge renders in this same order, so a viewer scanning across the
+// strip is traversing the same outcome severity axis as the arc.
 const OUTCOME_CELLS: ReadonlyArray<OutcomeCell> = [
   {
-    key: "converged",
-    short: "CONV",
-    cls: "conv",
-    colorVar: "var(--band-conv)",
-    matches: ["converged"],
-  },
-  {
-    key: "stalled",
-    short: "STALL",
-    cls: "stall",
-    colorVar: "var(--band-stall)",
-    matches: ["stalled", "max_iterations"],
+    key: "diverged",
+    short: "DIV",
+    cls: "div",
+    colorVar: "var(--band-div)",
+    matches: ["diverged"],
   },
   {
     key: "oscillating",
@@ -55,11 +57,18 @@ const OUTCOME_CELLS: ReadonlyArray<OutcomeCell> = [
     matches: ["oscillating"],
   },
   {
-    key: "diverged",
-    short: "DIV",
-    cls: "div",
-    colorVar: "var(--band-div)",
-    matches: ["diverged"],
+    key: "stalled",
+    short: "STALL",
+    cls: "stall",
+    colorVar: "var(--band-stall)",
+    matches: ["stalled", "max_iterations"],
+  },
+  {
+    key: "converged",
+    short: "CONV",
+    cls: "conv",
+    colorVar: "var(--band-conv)",
+    matches: ["converged"],
   },
 ];
 
@@ -120,6 +129,12 @@ function OverviewBody({
     return c;
   }, [stats.outcomes]);
   const totalEvents = stats.totals?.event_count ?? events.length;
+  // % CONVERGED — single-scalar fleet-health signal feeding the RingGauge
+  // on the left card. Sourced from /v1/stats.outcomes server-side counts
+  // (not the recency-biased /events sample), so the gauge reflects
+  // tenant-wide reality. Bench reads 1293 / 2000 = 64.65%.
+  const convCount = outcomeCounts["converged"] ?? 0;
+  const convergenceRate = totalEvents > 0 ? (convCount / totalEvents) * 100 : 0;
   // Cells with non-zero matching outcomes; render this set so a healthy
   // tenant doesn't see five zeros next to one number.
   const visibleCells = useMemo(
@@ -149,17 +164,16 @@ function OverviewBody({
   // with lots of TARGET_MET-at-iter-1 runs (bench is the canonical case).
   // Pre-v0.3.1 receivers will still return 0 here; the fallback path
   // covers them.
-  const sampleAbValues = useMemo(
-    () => events.map((e) => e.profile_max),
-    [events],
-  );
+  // Gain-margin medians stay here only to feed the Gain Margin cardlet's
+  // teaser text. The four Aβ-derived headline stats (median Aβ, p99 Aβ,
+  // GM median, GM p10) used to live in the KPI quad on Overview but moved
+  // to the Convergence panel with proper context (band-strip + methodology
+  // footnote) — Overview now reads cleanly without Aβ vocabulary.
   const sampleGmValues = useMemo(
     () => events.map((e) => e.gain_margin),
     [events],
   );
   const agg = stats.aggregates;
-  const abMedian = agg?.ab_median ?? median(sampleAbValues) ?? 0;
-  const abP99 = agg?.ab_p99 ?? percentile(sampleAbValues, 0.99) ?? 0;
   const gmMedian = agg?.gm_median ?? median(sampleGmValues) ?? 0;
   const gmP10 = agg?.gm_p10 ?? percentile(sampleGmValues, 0.1) ?? 0;
 
@@ -309,15 +323,15 @@ function OverviewBody({
         >
           <div style={{ display: "flex", justifyContent: "center", paddingTop: 8 }}>
             <div style={{ width: "100%", maxWidth: 240, aspectRatio: "1 / 1" }}>
-              <OutcomeDonut
+              <OutcomeDistGauge
+                valueLabel="% CONVERGED"
+                value={convergenceRate}
+                valueSub={`${fmtInt(convCount)} of ${fmtInt(totalEvents)} runs`}
                 slices={visibleCells.map((cell) => ({
                   label: cell.short,
                   count: cell.count,
                   color: cell.colorVar,
                 }))}
-                centerLabel="LOOP EVENTS"
-                centerValue={fmtInt(totalEvents)}
-                centerSub="outcome distribution"
               />
             </div>
           </div>
@@ -505,28 +519,53 @@ function OverviewBody({
             gridTemplateRows: "1fr 1fr",
           }}
         >
-          {[
-            {
-              label: <>Median A<NoCase>β</NoCase> (per-run max)</>,
-              value: abMedian.toFixed(2),
-              sub: "across measurable runs",
-            },
-            {
-              label: <>p99 A<NoCase>β</NoCase></>,
-              value: abP99.toFixed(2),
-              sub: "worst 1%",
-            },
-            {
-              label: "Gain margin · median",
-              value: gmMedian.toFixed(2),
-              sub: `p10 = ${gmP10.toFixed(2)}`,
-            },
-            {
-              label: "Total iterations · 30d",
-              value: fmtInt(totals.total_iterations),
-              sub: `${fmtInt(totals.event_count)} runs`,
-            },
-          ].map((k, i) => (
+          {(() => {
+            // Buyer-facing KPI quad — four diverse signals across efficiency
+            // (iterations), stability (convergence rate), responsiveness
+            // (avg iters per run), and mechanism (rollbacks). Aβ-derived
+            // statistics moved to the Convergence panel where they have
+            // proper context (band-strip + per-band classifier + ≥2-iters
+            // methodology footnote).
+            const cap = totals.event_count * FIXED_CAP_BASELINE;
+            const reductionPct = cap > 0 ? (totals.total_savings / cap) * 100 : 0;
+            const convRatePct =
+              totals.event_count > 0 ? (convCount / totals.event_count) * 100 : 0;
+            const avgIters =
+              totals.event_count > 0
+                ? totals.total_iterations / totals.event_count
+                : 0;
+            const sooner =
+              FIXED_CAP_BASELINE > 0
+                ? ((FIXED_CAP_BASELINE - avgIters) / FIXED_CAP_BASELINE) * 100
+                : 0;
+            const rollbackEvery =
+              totals.rollbacks > 0 ? totals.event_count / totals.rollbacks : 0;
+            return [
+              {
+                label: "Iterations · 30d",
+                value: `${fmtInt(totals.total_iterations)} / ${fmtInt(cap)}`,
+                sub: `${reductionPct.toFixed(1)}% reduction · ${fmtInt(totals.event_count)} runs`,
+              },
+              {
+                label: "Convergence rate · 30d",
+                value: `${convRatePct.toFixed(1)}%`,
+                sub: `${fmtInt(convCount)} of ${fmtInt(totals.event_count)} runs`,
+              },
+              {
+                label: "Avg iters per run · 30d",
+                value: avgIters.toFixed(2),
+                sub: `vs ${FIXED_CAP_BASELINE.toFixed(1)} cap · ${sooner.toFixed(0)}% sooner to stop`,
+              },
+              {
+                label: "Rollbacks · 30d",
+                value: fmtInt(totals.rollbacks),
+                sub:
+                  totals.rollbacks > 0
+                    ? `one every ${rollbackEvery.toFixed(1)} runs · best-so-far preserved`
+                    : "best-so-far rollback not yet triggered",
+              },
+            ];
+          })().map((k, i) => (
             <div
               key={i}
               style={{

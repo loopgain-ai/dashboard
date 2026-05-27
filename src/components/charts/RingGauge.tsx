@@ -68,19 +68,27 @@ export function RingGauge({
       width="100%"
       height="100%"
       preserveAspectRatio="xMidYMid meet"
-      style={{ display: "block" }}
+      style={{ display: "block", overflow: "visible" }}
     >
       <path d={arcPath(startA, endA)} stroke="var(--surf-3)" strokeWidth="10" fill="none" />
-      {bands.map((b, i) => (
-        <path
-          key={i}
-          d={arcPath(toAng(b.from), toAng(b.to))}
-          stroke={b.color}
-          strokeWidth="10"
-          fill="none"
-          strokeOpacity={value >= b.from ? 0.95 : 0.32}
-        />
-      ))}
+      {bands.map((b, i) => {
+        // Two states per band: lit (full saturation) or unlit (darkened
+        // via CSS brightness so the hue stays intact rather than going
+        // translucent against the dark background). No glow filter — bare
+        // colors so the gauge reads as the same hex as the strip below.
+        const lit = value >= b.from;
+        return (
+          <path
+            key={i}
+            d={arcPath(toAng(b.from), toAng(b.to))}
+            stroke={b.color}
+            strokeWidth="10"
+            fill="none"
+            strokeOpacity="1"
+            style={lit ? undefined : { filter: "brightness(0.3)" }}
+          />
+        );
+      })}
       {tickValues.map((t, i) => {
         const a = toAng(t);
         const x1 = cx + (r - 12) * Math.cos(a);

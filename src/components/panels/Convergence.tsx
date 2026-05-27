@@ -108,6 +108,10 @@ export function Convergence({ pollMs, sinceHours }: Props) {
                 <ConvergenceBody
                   events={profilesData.events}
                   totalEvents={statsData.totals?.event_count ?? profilesData.events.length}
+                  abMedian={statsData.aggregates?.ab_median ?? 0}
+                  abP99={statsData.aggregates?.ab_p99 ?? 0}
+                  gmMedian={statsData.aggregates?.gm_median ?? 0}
+                  gmP10={statsData.aggregates?.gm_p10 ?? 0}
                   yMax={yMax}
                   showTrend={showTrend}
                 />
@@ -120,14 +124,35 @@ export function Convergence({ pollMs, sinceHours }: Props) {
   );
 }
 
+// Aβ band classifier — maps a median Aβ value to the named band it falls in.
+// Thresholds mirror the State classifier card below (0.3 / 0.85 / 0.95 / 1.05);
+// used to subtitle the Median Aβ stat with the band it sits in, providing the
+// at-a-glance "where does this fall" context the brief asked for.
+function abBandLabel(ab: number): string {
+  if (ab <= 0) return "no measurable runs";
+  if (ab < 0.3) return "FAST_CONVERGE zone";
+  if (ab < 0.85) return "CONVERGING zone";
+  if (ab < 0.95) return "STALLING zone";
+  if (ab < 1.05) return "OSCILLATING zone";
+  return "DIVERGING zone";
+}
+
 function ConvergenceBody({
   events,
   totalEvents,
+  abMedian,
+  abP99,
+  gmMedian,
+  gmP10,
   yMax,
   showTrend,
 }: {
   events: ReadonlyArray<ProfileEvent>;
   totalEvents: number;
+  abMedian: number;
+  abP99: number;
+  gmMedian: number;
+  gmP10: number;
   yMax: number;
   showTrend: boolean;
 }) {
@@ -158,6 +183,102 @@ function ConvergenceBody({
 
   return (
     <>
+      {/* Aβ statistics · 30d — relocated here from Overview's KPI quad
+          (2026-05-26 reframe). Overview now uses buyer-facing diverse
+          signals; the Aβ population statistics live here where the State
+          classifier card (below) provides the band-threshold context and
+          the ≥2-iters methodology footnote can be stated plainly. */}
+      <div className="card" style={{ padding: 18, marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+          <h3 style={{ margin: 0, fontSize: 13, fontWeight: 500 }}>
+            Aβ statistics · 30d
+          </h3>
+          <span className="mono" style={{ fontSize: 10.5, color: "var(--text-3)" }}>
+            tenant-wide aggregates · /v1/stats
+          </span>
+        </div>
+        <div
+          style={{
+            fontSize: 11,
+            color: "var(--text-3)",
+            marginTop: 4,
+            lineHeight: 1.5,
+            maxWidth: 820,
+          }}
+        >
+          Aβ is the iteration-to-iteration loop-gain ratio. Computed only
+          across runs with ≥2 iterations — runs that converged at iter 1
+          (TARGET_MET immediately) have no Aβ measurement and are excluded
+          from these statistics. See the State classifier below for the
+          five band thresholds.
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
+            marginTop: 14,
+            borderTop: "1px solid var(--border)",
+          }}
+        >
+          {[
+            {
+              label: "Median Aβ",
+              value: abMedian.toFixed(2),
+              sub: abMedian > 0 ? abBandLabel(abMedian) : "no measurable runs",
+            },
+            {
+              label: "p99 Aβ",
+              value: abP99.toFixed(2),
+              sub: abP99 > 0 ? abBandLabel(abP99) + " · worst 1%" : "worst 1%",
+            },
+            {
+              label: "Gain margin · median",
+              value: gmMedian.toFixed(2),
+              sub: "distance from instability boundary",
+            },
+            {
+              label: "Gain margin · p10",
+              value: gmP10.toFixed(2),
+              sub: "worst 10% of runs",
+            },
+          ].map((k, i) => (
+            <div
+              key={i}
+              style={{
+                padding: 14,
+                borderRight: i < 3 ? "1px solid var(--border)" : "none",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "var(--text-3)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                {k.label}
+              </div>
+              <div
+                className="mono"
+                style={{
+                  fontSize: 26,
+                  fontWeight: 500,
+                  color: "var(--text-1)",
+                  marginTop: 6,
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                {k.value}
+              </div>
+              <div style={{ fontSize: 10.5, color: "var(--text-3)", marginTop: 4 }}>
+                {k.sub}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="card" style={{ padding: 16 }}>
         <div
           style={{
