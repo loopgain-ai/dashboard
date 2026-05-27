@@ -451,13 +451,13 @@ function WasteBody({
       <div className="waste-breakdowns">
         {[
           {
-            title: "By workload",
+            title: "Saved · by workload",
             rows: byWorkload,
             isOutcome: false,
             source: "extrapolated" as const,
           },
           {
-            title: "By outcome",
+            title: "Saved · by outcome",
             rows: byOutcome.rows,
             isOutcome: true,
             source: byOutcome.source,
@@ -469,8 +469,8 @@ function WasteBody({
             : "var(--surf-3)";
           const tagColor = isMeasured ? "var(--band-fast)" : "var(--text-3)";
           const tagTitle = isMeasured
-            ? "Real paired-baseline dollars per outcome from /stats.aggregates.by_outcome."
-            : "Extrapolated from savings_vs_fixed_cap × cost/iter across the events sample. Not the paired-baseline measurement.";
+            ? "Real dollars saved by LoopGain per outcome — paired-baseline measurement from /stats.aggregates.by_outcome. Not the without-LoopGain cost; it's the delta vs. matched no-LoopGain runs."
+            : "Dollars saved by LoopGain, extrapolated from savings_vs_fixed_cap × cost/iter across the events sample. Not a paired-baseline measurement, and not the without-LoopGain cost — it's the savings delta.";
           return (
             <div key={b.title} className="card">
               <div className="card-h">
