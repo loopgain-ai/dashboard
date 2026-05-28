@@ -4,6 +4,7 @@
 // shapes the real receiver returns, so every panel renders against the same
 // data layer in either mode.
 
+import { median, percentile } from "./stats";
 import type {
   AlertDelivery,
   AlertRule,
@@ -319,6 +320,17 @@ export function demoStats(): StatsResponse {
       .map(([value, count]) => ({ value, count }))
       .sort((a, b) => b.count - a.count);
   };
+  // Tenant-wide Aβ / gain-margin aggregates — mirror the receiver's
+  // statsCore semantics so demo mode populates the Convergence panel's
+  // Aβ statistics card (and the same fields read by Overview /
+  // GainMargin). Aβ uses profile_max (excluding null rows: TARGET_MET-
+  // at-iter-1 has no measurable Aβ); gain_margin excludes nulls too.
+  const abValues = inWindow
+    .map((e) => e.profile_max)
+    .filter((v): v is number => typeof v === "number" && !Number.isNaN(v));
+  const gmValues = inWindow
+    .map((e) => e.gain_margin)
+    .filter((v): v is number => typeof v === "number" && !Number.isNaN(v));
   return {
     customer_id: "demo-customer",
     window_days: 30,
@@ -336,6 +348,12 @@ export function demoStats(): StatsResponse {
     frameworks: tally("framework"),
     loop_types: tally("loop_type"),
     teams: tally("team"),
+    aggregates: {
+      ab_median: median(abValues),
+      ab_p99: percentile(abValues, 0.99),
+      gm_median: median(gmValues),
+      gm_p10: percentile(gmValues, 0.1),
+    },
   };
 }
 
