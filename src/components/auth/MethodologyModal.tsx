@@ -93,9 +93,11 @@ export function MethodologyModal({ open, onClose }: Props) {
           — 2,000 paired real-API runs of Claude Haiku 4.5 across{" "}
           <strong>5 workload classes</strong> (codegen / debate /
           multi-step planner / RAG retrieval refinement / adversarial),{" "}
-          <strong>7 agent frameworks</strong> (LangGraph, CrewAI,
-          AutoGen, LangChain, OpenAI Agents SDK, Claude Agent SDK, bare
-          Anthropic), and{" "}
+          <strong>7 framework categories</strong> (the library's 6
+          shipped integration adapters — LangGraph, CrewAI, AutoGen,
+          LangChain, OpenAI Agents SDK, Claude Agent SDK — plus a
+          bare-Anthropic-SDK control cell that runs LoopGain directly
+          without any framework wrapper), and{" "}
           <strong>5 loop types</strong> (refinement, verify_revise,
           tool_use_retry, critique_revise, iterative_retrieval). Two
           parameters are yours to set:{" "}

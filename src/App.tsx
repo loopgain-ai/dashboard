@@ -252,7 +252,12 @@ function AppInner() {
       />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         {bench && <BenchBanner />}
-        {demo && <DemoBanner onOpenMethodology={() => setMethodologyOpen(true)} />}
+        {demo && (
+          <DemoBanner
+            onOpenMethodology={() => setMethodologyOpen(true)}
+            onOpenInstall={() => setRoute("empty")}
+          />
+        )}
         <TopBar
           timeRange={timeRange}
           setTimeRange={setTimeRange}
@@ -265,7 +270,7 @@ function AppInner() {
           bench={bench}
         />
         {isAuthed && route !== "settings" && route !== "empty" && <FilterBar />}
-        {demo && (
+        {demo && route !== "empty" && (
           <DemoControls onOpenMethodology={() => setMethodologyOpen(true)} />
         )}
         <main style={{ flex: 1, overflow: "auto" }}>{content}</main>
@@ -358,8 +363,17 @@ function AppInner() {
 
 /** Demo banner — explicit "you're looking at a projection, here's where
  *  to verify the receipts" disclosure. The ⓘ link opens the methodology
- *  modal; the /benchmark link sends visitors to the underlying bench. */
-function DemoBanner({ onOpenMethodology }: { onOpenMethodology: () => void }) {
+ *  modal; the /benchmark link sends visitors to the underlying bench; the
+ *  "Install free" CTA routes to the inline EmptyState (install snippets
+ *  for all 6 framework adapters) rather than the marketing site, so the
+ *  visitor stays in the dashboard. */
+function DemoBanner({
+  onOpenMethodology,
+  onOpenInstall,
+}: {
+  onOpenMethodology: () => void;
+  onOpenInstall: () => void;
+}) {
   return (
     <div
       style={{
@@ -383,7 +397,8 @@ function DemoBanner({ onOpenMethodology }: { onOpenMethodology: () => void }) {
           — bench dynamics × your scale &amp; cost assumptions. The
           underlying bench (2,000 paired Haiku-4.5 runs across 5
           workload classes — codegen, debate, planner, RAG, adversarial
-          — and 7 frameworks, fully measured) is at{" "}
+          — and 7 framework categories (6 shipped adapters + 1
+          bare-SDK control), fully measured) is at{" "}
           <a
             href="/benchmark"
             style={{ color: "var(--accent)", textDecoration: "underline" }}
@@ -407,10 +422,9 @@ function DemoBanner({ onOpenMethodology }: { onOpenMethodology: () => void }) {
           </button>
         </span>
       </div>
-      <a
-        href="https://loopgain.ai"
-        target="_blank"
-        rel="noopener"
+      <button
+        type="button"
+        onClick={onOpenInstall}
         style={{
           display: "inline-flex",
           alignItems: "center",
@@ -424,10 +438,12 @@ function DemoBanner({ onOpenMethodology }: { onOpenMethodology: () => void }) {
           textDecoration: "none",
           whiteSpace: "nowrap",
           fontSize: 12,
+          cursor: "pointer",
+          border: "none",
         }}
       >
         Install free → instrument your own loops
-      </a>
+      </button>
     </div>
   );
 }
