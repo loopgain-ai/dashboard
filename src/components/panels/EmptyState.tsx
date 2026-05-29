@@ -1,8 +1,9 @@
-// Empty state — shown when no endpoint is configured and demo mode is off.
-// The Python integration snippet is the empty state.
+// Empty state — shown when a customer hits the explicit "empty" route
+// (e.g. after disconnecting). The Python integration snippet is the
+// empty state. Fresh public visitors are redirected to /demo at boot
+// (see main.tsx); they never reach this component.
 
 import { useState } from "react";
-import { useAuth } from "../../lib/api";
 import { Chip, Icon, PanelHeader } from "../primitives";
 
 interface Props {
@@ -33,7 +34,6 @@ guarded = LangGraphGuard.wrap(graph, target_error=0.1)
 app = guarded.compile()`;
 
 export function EmptyState({ openConnect }: Props) {
-  const { setDemo } = useAuth();
   const [lang, setLang] = useState<"python" | "langgraph">("python");
   const [copied, setCopied] = useState(false);
 
@@ -53,7 +53,11 @@ export function EmptyState({ openConnect }: Props) {
         title="No loops streaming yet"
         right={
           <div style={{ display: "flex", gap: 8 }}>
-            <Chip onClick={() => setDemo(true)}>Use demo data</Chip>
+            <Chip
+              onClick={() => window.location.assign("/demo")}
+            >
+              View demo
+            </Chip>
             <Chip
               onClick={openConnect}
               style={{

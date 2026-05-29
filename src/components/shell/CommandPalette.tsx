@@ -27,7 +27,7 @@ export function CommandPalette({
   toggleTheme,
   disconnect,
 }: Props) {
-  const { demo, setDemo } = useAuth();
+  const { demo, bench } = useAuth();
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -70,11 +70,23 @@ export function CommandPalette({
         label: "Toggle dark / light theme",
         action: toggleTheme,
       },
+      // Switch between the public projection (/demo) and the public
+      // bench tenant (/benchmark). Both are URL-driven; navigating
+      // changes the mode.
       {
         group: "Actions",
-        label: demo ? "Exit demo mode" : "Enter demo mode",
-        action: () => setDemo(!demo),
+        label: demo ? "View benchmark (receipts)" : "View demo (projection)",
+        action: () => window.location.assign(demo ? "/benchmark" : "/demo"),
       },
+      ...(bench
+        ? [
+            {
+              group: "Actions",
+              label: "View demo (projection)",
+              action: () => window.location.assign("/demo"),
+            },
+          ]
+        : []),
       {
         group: "Actions",
         label: "Disconnect",
@@ -82,7 +94,7 @@ export function CommandPalette({
       },
     ];
     return [...navs, ...actions, ...loops];
-  }, [setRoute, workloads, toggleTheme, disconnect, demo, setDemo]);
+  }, [setRoute, workloads, toggleTheme, disconnect, demo, bench]);
 
   const filtered = useMemo(() => {
     if (!q) return commands;

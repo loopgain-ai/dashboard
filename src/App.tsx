@@ -5,8 +5,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { AuthContext, useAuthProvider } from "./lib/api";
 import { FilterContext, useFiltersProvider } from "./lib/filters";
+import { DemoParamsContext, useDemoParamsProvider } from "./lib/demo-params";
 import { useStats } from "./lib/data-hooks";
 import { ConnectDialog } from "./components/auth/ConnectDialog";
+import { MethodologyModal } from "./components/auth/MethodologyModal";
+import { DemoControls } from "./components/panels/DemoControls";
 import {
   CommandPalette,
   FilterBar,
@@ -55,10 +58,13 @@ function loadCost(): number {
 export function App() {
   const auth = useAuthProvider();
   const filters = useFiltersProvider();
+  const demoParams = useDemoParamsProvider();
   return (
     <AuthContext.Provider value={auth}>
       <FilterContext.Provider value={filters}>
-        <AppInner />
+        <DemoParamsContext.Provider value={demoParams}>
+          <AppInner />
+        </DemoParamsContext.Provider>
       </FilterContext.Provider>
     </AuthContext.Provider>
   );
@@ -81,6 +87,7 @@ function AppInner() {
   const [timeRange, setTimeRange] = useState<TimeRange>("30d");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
+  const [methodologyOpen, setMethodologyOpen] = useState(false);
   const [costPerIter, setCostPerIterState] = useState(() => loadCost());
 
   function setCostPerIter(n: number): void {
@@ -245,6 +252,7 @@ function AppInner() {
       />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         {bench && <BenchBanner />}
+        {demo && <DemoBanner onOpenMethodology={() => setMethodologyOpen(true)} />}
         <TopBar
           timeRange={timeRange}
           setTimeRange={setTimeRange}
@@ -257,6 +265,9 @@ function AppInner() {
           bench={bench}
         />
         {isAuthed && route !== "settings" && route !== "empty" && <FilterBar />}
+        {demo && (
+          <DemoControls onOpenMethodology={() => setMethodologyOpen(true)} />
+        )}
         <main style={{ flex: 1, overflow: "auto" }}>{content}</main>
         <footer
           className="app-footer"
@@ -288,7 +299,7 @@ function AppInner() {
                     : "var(--text-3)",
               }}
             >
-              ● {bench ? "bench" : demo ? "demo" : connection.status}
+              ● {bench ? "bench" : demo ? "demo projection" : connection.status}
             </span>
           </span>
           {connection.status === "connected" && "customerId" in connection && connection.customerId && (
@@ -331,14 +342,91 @@ function AppInner() {
         toggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
         disconnect={disconnect}
       />
-      {!bench && (
-        <ConnectDialog open={connectOpen} onClose={() => setConnectOpen(false)} />
-      )}
+      <ConnectDialog open={connectOpen} onClose={() => setConnectOpen(false)} />
+      <MethodologyModal
+        open={methodologyOpen}
+        onClose={() => setMethodologyOpen(false)}
+      />
 
       {/* Show nav keybinding hint badges (no-op, just to ensure NAV stays imported) */}
       <span style={{ display: "none" }} aria-hidden>
         {NAV.length}
       </span>
+    </div>
+  );
+}
+
+/** Demo banner — explicit "you're looking at a projection, here's where
+ *  to verify the receipts" disclosure. The ⓘ link opens the methodology
+ *  modal; the /benchmark link sends visitors to the underlying bench. */
+function DemoBanner({ onOpenMethodology }: { onOpenMethodology: () => void }) {
+  return (
+    <div
+      style={{
+        flex: "0 0 auto",
+        padding: "10px 16px",
+        background: "var(--surf-2)",
+        borderBottom: "1px solid var(--border)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        columnGap: 16,
+        rowGap: 8,
+        flexWrap: "wrap",
+        fontSize: 12.5,
+        color: "var(--text-1)",
+      }}
+    >
+      <div style={{ flex: "1 1 320px", minWidth: 0 }}>
+        <strong style={{ fontWeight: 600 }}>Production-scale projection</strong>{" "}
+        <span style={{ color: "var(--text-2)" }}>
+          — bench dynamics × your scale &amp; cost assumptions. The
+          underlying bench (2,000 Haiku-4.5 codegen runs, fully measured)
+          is at{" "}
+          <a
+            href="/benchmark"
+            style={{ color: "var(--accent)", textDecoration: "underline" }}
+          >
+            /benchmark
+          </a>
+          .{" "}
+          <button
+            type="button"
+            onClick={onOpenMethodology}
+            style={{
+              background: "transparent",
+              color: "var(--accent)",
+              textDecoration: "underline",
+              fontSize: 12.5,
+              padding: 0,
+              cursor: "pointer",
+            }}
+          >
+            ⓘ methodology
+          </button>
+        </span>
+      </div>
+      <a
+        href="https://loopgain.ai"
+        target="_blank"
+        rel="noopener"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          height: 28,
+          padding: "0 14px",
+          borderRadius: 5,
+          background: "var(--accent)",
+          color: "var(--bg-0)",
+          fontWeight: 500,
+          textDecoration: "none",
+          whiteSpace: "nowrap",
+          fontSize: 12,
+        }}
+      >
+        Install free → instrument your own loops
+      </a>
     </div>
   );
 }
@@ -378,7 +466,7 @@ function BenchBanner() {
           >
             public bench repo
           </a>
-          . This is read-only demo data.
+          . Read-only — click env:bench to connect your own tenant, or see <a href="/demo" style={{ color: "var(--accent)", textDecoration: "underline" }}>/demo</a> for a production-scale projection.
         </span>
       </div>
       <a

@@ -1,11 +1,13 @@
 // Higher-level data hooks. Each returns the typed response in one of
 // three modes:
 //   - live  → real receiver via authed `/v1/*` endpoints
-//   - demo  → synthetic fleet from src/lib/demo.ts (offline)
 //   - bench → public `/v1/public/benchmark/*` endpoints, scoped on the
 //             receiver side to the hardcoded canonical bench tenant.
-// Bench-mode is set when the dashboard is mounted at `/benchmark`; see
-// `isBenchPath` + AuthCtx.bench in src/lib/api.ts.
+//   - demo  → public bench fetch followed by a client-side scaling
+//             transform driven by DemoParamsCtx (eventsPerMonth +
+//             dollarsPerIter). See src/lib/demo.ts for the transforms.
+// Both bench-mode and demo-mode use the `benchLoader` path in useApi;
+// only the transform differs.
 
 import { useMemo } from "react";
 import {
@@ -28,14 +30,12 @@ import {
   type LoadState,
 } from "./api";
 import { useFilters } from "./filters";
+import { useDemoParams } from "./demo-params";
 import {
-  demoAlertDeliveries,
-  demoAlertRules,
-  demoCalibration,
-  demoEventDetail,
-  demoEvents,
-  demoProfiles,
-  demoStats,
+  scaleCalibration,
+  scaleEvents,
+  scaleProfiles,
+  scaleStats,
 } from "./demo";
 import type {
   AlertDeliveriesResponse,
@@ -47,35 +47,36 @@ import type {
   StatsResponse,
 } from "../types";
 
-const NOW = () => Date.now();
-
 export function useStats(opts: { pollMs?: number } = {}): {
   state: LoadState<StatsResponse>;
   refresh: () => void;
 } {
   const { demo, bench } = useAuth();
-  const { state, refresh } = useApi<StatsResponse>(
+  const { params } = useDemoParams();
+  return useApi<StatsResponse>(
     demo || bench ? null : (c, signal) => getStats(c, signal),
-    [],
-    { ...opts, benchLoader: bench ? (signal) => getStatsBench(signal) : undefined },
+    [demo ? params.eventsPerMonth : 0, demo ? params.dollarsPerIter : 0],
+    {
+      ...opts,
+      benchLoader: bench
+        ? (signal) => getStatsBench(signal)
+        : demo
+        ? async (signal) => scaleStats(await getStatsBench(signal), params)
+        : undefined,
+    },
   );
-  const demoState = useMemo<LoadState<StatsResponse>>(
-    () => ({ status: "ok", data: demoStats(), loadedAt: NOW() }),
-    [],
-  );
-  if (demo) return { state: demoState, refresh };
-  return { state, refresh };
 }
 
 export function useProfiles(
   opts: { workloadId?: string; sinceHours?: number; pollMs?: number } = {},
 ): { state: LoadState<ProfilesResponse>; refresh: () => void } {
   const { demo, bench } = useAuth();
+  const { params } = useDemoParams();
   const { filters } = useFilters();
   // workloadId from props overrides the global filter (used by Loop Detail
   // to pin to a single workload regardless of the filter bar).
   const effectiveWorkload = opts.workloadId ?? filters.workload_id;
-  const { state, refresh } = useApi<ProfilesResponse>(
+  return useApi<ProfilesResponse>(
     demo || bench
       ? null
       : (c, signal) =>
@@ -96,6 +97,8 @@ export function useProfiles(
       filters.framework,
       filters.loop_type,
       filters.team,
+      demo ? params.eventsPerMonth : 0,
+      demo ? params.dollarsPerIter : 0,
     ],
     {
       pollMs: opts.pollMs,
@@ -111,37 +114,31 @@ export function useProfiles(
               },
               signal,
             )
+        : demo
+        ? async (signal) =>
+            scaleProfiles(
+              await getProfilesBench(
+                {
+                  workloadId: effectiveWorkload,
+                  sinceHours: opts.sinceHours,
+                  framework: filters.framework,
+                  loop_type: filters.loop_type,
+                  team: filters.team,
+                },
+                signal,
+              ),
+              params,
+            )
         : undefined,
     },
   );
-  const demoState = useMemo<LoadState<ProfilesResponse>>(
-    () => ({
-      status: "ok",
-      data: demoProfiles({
-        workloadId: effectiveWorkload,
-        sinceHours: opts.sinceHours,
-        framework: filters.framework,
-        loop_type: filters.loop_type,
-        team: filters.team,
-      }),
-      loadedAt: NOW(),
-    }),
-    [
-      effectiveWorkload,
-      opts.sinceHours,
-      filters.framework,
-      filters.loop_type,
-      filters.team,
-    ],
-  );
-  if (demo) return { state: demoState, refresh };
-  return { state, refresh };
 }
 
 export function useEvents(
   opts: { rollbacksOnly?: boolean; sinceHours?: number; pollMs?: number } = {},
 ): { state: LoadState<EventsResponse>; refresh: () => void } {
   const { demo, bench } = useAuth();
+  const { params } = useDemoParams();
   const { filters } = useFilters();
   const { state, refresh } = useApi<EventsResponse>(
     demo || bench
@@ -164,6 +161,8 @@ export function useEvents(
       filters.loop_type,
       filters.team,
       filters.workload_id,
+      demo ? params.eventsPerMonth : 0,
+      demo ? params.dollarsPerIter : 0,
     ],
     {
       pollMs: opts.pollMs,
@@ -179,46 +178,40 @@ export function useEvents(
               },
               signal,
             )
+        : demo
+        ? async (signal) =>
+            scaleEvents(
+              await getEventsBench(
+                {
+                  rollbacksOnly: opts.rollbacksOnly,
+                  framework: filters.framework,
+                  loop_type: filters.loop_type,
+                  team: filters.team,
+                  workload_id: filters.workload_id,
+                },
+                signal,
+              ),
+              params,
+            )
         : undefined,
     },
   );
-  const demoState = useMemo<LoadState<EventsResponse>>(
-    () => ({
-      status: "ok",
-      data: demoEvents({
-        rollbacksOnly: opts.rollbacksOnly,
-        framework: filters.framework,
-        loop_type: filters.loop_type,
-        team: filters.team,
-        workload_id: filters.workload_id,
-      }),
-      loadedAt: NOW(),
-    }),
-    [
-      opts.rollbacksOnly,
-      filters.framework,
-      filters.loop_type,
-      filters.team,
-      filters.workload_id,
-    ],
-  );
-  const base = demo ? demoState : state;
   // The receiver doesn't accept a `since_hours` param on /v1/events, so we
   // apply the time-range filter client-side using `timestamp_hour`.
   const filtered = useMemo<LoadState<EventsResponse>>(() => {
-    if (opts.sinceHours == null) return base;
+    if (opts.sinceHours == null) return state;
     const since = Math.floor(Date.now() / 1000) - opts.sinceHours * 3600;
     const apply = (d: EventsResponse): EventsResponse => ({
       ...d,
       events: d.events.filter((e) => e.timestamp_hour >= since),
     });
-    if (base.status === "ok") return { ...base, data: apply(base.data) };
-    if (base.status === "loading" && base.previous)
-      return { ...base, previous: apply(base.previous) };
-    if (base.status === "error" && base.previous)
-      return { ...base, previous: apply(base.previous) };
-    return base;
-  }, [base, opts.sinceHours]);
+    if (state.status === "ok") return { ...state, data: apply(state.data) };
+    if (state.status === "loading" && state.previous)
+      return { ...state, previous: apply(state.previous) };
+    if (state.status === "error" && state.previous)
+      return { ...state, previous: apply(state.previous) };
+    return state;
+  }, [state, opts.sinceHours]);
   return { state: filtered, refresh };
 }
 
@@ -226,9 +219,10 @@ export function useCalibration(
   opts: { workloadId?: string; sinceHours?: number; pollMs?: number } = {},
 ): { state: LoadState<CalibrationResponse>; refresh: () => void } {
   const { demo, bench } = useAuth();
+  const { params } = useDemoParams();
   const { filters } = useFilters();
   const effectiveWorkload = opts.workloadId ?? filters.workload_id;
-  const { state, refresh } = useApi<CalibrationResponse>(
+  return useApi<CalibrationResponse>(
     demo || bench
       ? null
       : (c, signal) =>
@@ -249,6 +243,8 @@ export function useCalibration(
       filters.framework,
       filters.loop_type,
       filters.team,
+      demo ? params.eventsPerMonth : 0,
+      demo ? params.dollarsPerIter : 0,
     ],
     {
       benchLoader: bench
@@ -263,99 +259,75 @@ export function useCalibration(
               },
               signal,
             )
+        : demo
+        ? async (signal) =>
+            scaleCalibration(
+              await getCalibrationBench(
+                {
+                  workloadId: effectiveWorkload,
+                  sinceHours: opts.sinceHours,
+                  framework: filters.framework,
+                  loop_type: filters.loop_type,
+                  team: filters.team,
+                },
+                signal,
+              ),
+              params,
+            )
         : undefined,
     },
   );
-  const demoState = useMemo<LoadState<CalibrationResponse>>(
-    () => ({
-      status: "ok",
-      data: demoCalibration({
-        workloadId: effectiveWorkload,
-        sinceHours: opts.sinceHours,
-        framework: filters.framework,
-        loop_type: filters.loop_type,
-        team: filters.team,
-      }),
-      loadedAt: NOW(),
-    }),
-    [
-      effectiveWorkload,
-      opts.sinceHours,
-      filters.framework,
-      filters.loop_type,
-      filters.team,
-    ],
-  );
-  if (demo) return { state: demoState, refresh };
-  return { state, refresh };
 }
 
 export function useAlertRules(
   opts: { pollMs?: number; refreshTrigger?: number } = {},
 ): { state: LoadState<AlertRulesResponse>; refresh: () => void } {
   const { demo, bench } = useAuth();
-  const { state, refresh } = useApi<AlertRulesResponse>(
+  return useApi<AlertRulesResponse>(
     demo || bench ? null : (c, signal) => getAlertRules(c, signal),
     [],
     {
       ...opts,
-      benchLoader: bench ? (signal) => getAlertRulesBench(signal) : undefined,
+      // Alert rules pass through unchanged in demo mode — they're a
+      // tenant-config concept, not a volume/cost concept.
+      benchLoader: bench || demo ? (signal) => getAlertRulesBench(signal) : undefined,
     },
   );
-  const demoState = useMemo<LoadState<AlertRulesResponse>>(
-    () => ({ status: "ok", data: { rules: demoAlertRules() }, loadedAt: NOW() }),
-    [],
-  );
-  if (demo) return { state: demoState, refresh };
-  return { state, refresh };
 }
 
 export function useAlertDeliveries(
   opts: { pollMs?: number; refreshTrigger?: number } = {},
 ): { state: LoadState<AlertDeliveriesResponse>; refresh: () => void } {
   const { demo, bench } = useAuth();
-  const { state, refresh } = useApi<AlertDeliveriesResponse>(
+  return useApi<AlertDeliveriesResponse>(
     demo || bench ? null : (c, signal) => getAlertDeliveries(c, signal),
     [],
     {
       ...opts,
-      benchLoader: bench ? (signal) => getAlertDeliveriesBench(signal) : undefined,
+      // Alert deliveries pass through unchanged in demo mode — see above.
+      benchLoader:
+        bench || demo ? (signal) => getAlertDeliveriesBench(signal) : undefined,
     },
   );
-  const demoState = useMemo<LoadState<AlertDeliveriesResponse>>(
-    () => ({
-      status: "ok",
-      data: { deliveries: demoAlertDeliveries() },
-      loadedAt: NOW(),
-    }),
-    [],
-  );
-  if (demo) return { state: demoState, refresh };
-  return { state, refresh };
 }
 
 export function useEventDetail(
   id: number | null,
 ): { state: LoadState<EventDetailResponse>; refresh: () => void } {
   const { demo, bench } = useAuth();
-  const { state, refresh } = useApi<EventDetailResponse>(
+  return useApi<EventDetailResponse>(
     !demo && !bench && id !== null ? (c, signal) => getEventDetail(c, id, signal) : null,
     [id],
     {
+      // EventDetail passes through unchanged in demo mode — the
+      // per-iteration trajectory is the bench's measured one; replaying
+      // it at scale doesn't change the shape.
       benchLoader:
-        bench && id !== null ? (signal) => getEventDetailBench(id, signal) : null,
+        (bench || demo) && id !== null
+          ? (signal) => getEventDetailBench(id, signal)
+          : null,
     },
   );
-  const demoState = useMemo<LoadState<EventDetailResponse>>(() => {
-    if (id === null) return { status: "idle" };
-    return {
-      status: "ok",
-      data: { event: demoEventDetail(id) },
-      loadedAt: NOW(),
-    };
-  }, [id]);
-  if (demo) return { state: demoState, refresh };
-  return { state, refresh };
 }
 
 export type { LoadState } from "./api";

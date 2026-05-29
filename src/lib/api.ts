@@ -30,7 +30,6 @@ import type {
 } from "../types";
 
 const STORAGE_KEY = "loopgain-dashboard-config";
-const DEMO_KEY = "loopgain-dashboard-demo";
 
 // Public-bench routes on the production receiver. CORS is wildcard there,
 // so this URL works from any origin (prod dashboard, npm-run-dev localhost,
@@ -44,6 +43,16 @@ const BENCH_PUBLIC_PREFIX = "/v1/public/benchmark";
 export function isBenchPath(): boolean {
   if (typeof window === "undefined") return false;
   return window.location.pathname.startsWith("/benchmark");
+}
+
+/** True when the current pathname is the parameterized demo route. Like
+ *  bench-mode, decided once at mount from the URL. Demo-mode reuses the
+ *  bench public endpoints (no auth needed) and applies a client-side
+ *  scaling transform driven by the visitor's DemoParams selections.
+ *  SSR-safe (returns false if `window` is undefined). */
+export function isDemoPath(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.location.pathname.startsWith("/demo");
 }
 
 export function loadConfig(): Config | null {
@@ -81,19 +90,6 @@ export function saveConfig(c: Config): void {
 
 export function clearConfig(): void {
   localStorage.removeItem(STORAGE_KEY);
-}
-
-export function loadDemoFlag(): boolean {
-  try {
-    return localStorage.getItem(DEMO_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-export function setDemoFlag(on: boolean): void {
-  if (on) localStorage.setItem(DEMO_KEY, "1");
-  else localStorage.removeItem(DEMO_KEY);
 }
 
 export class ApiError extends Error {
@@ -444,12 +440,14 @@ export type ConnectionState =
 
 export interface AuthCtx {
   config: Config | null;
+  /** Parameterized projection view (`/demo` path). Set once at mount from
+   *  the URL. Data-hooks fetch from the bench public endpoints and apply
+   *  a client-side scaling transform driven by DemoParamsCtx selections.
+   *  See src/lib/demo.ts for the transform layer. */
   demo: boolean;
   /** Read-only public benchmark view (`/benchmark` path). Set once at mount
-   *  from the URL; data-hooks route to `/v1/public/benchmark/*` when true,
-   *  and the UI hides every mutate affordance (Settings, Connect, etc.). */
+   *  from the URL; data-hooks route to `/v1/public/benchmark/*` when true. */
   bench: boolean;
-  setDemo: (on: boolean) => void;
   connection: ConnectionState;
   connect: (c: Config) => Promise<void>;
   disconnect: () => void;
@@ -500,9 +498,12 @@ export function useApi<T>(
   const refresh = useCallback(() => setTick((t) => t + 1), []);
 
   useEffect(() => {
-    // Bench-mode short-circuit: ignore config/demo entirely and run the
-    // public-routes loader. Demo cannot coexist with bench (bench wins).
-    if (bench) {
+    // Bench/demo short-circuit: when a public-routes loader is provided,
+    // run it instead of the authed loader. Demo mode supplies a
+    // benchLoader that fetches bench data and applies a scaling transform
+    // (see src/lib/demo.ts). Bench mode supplies a benchLoader that
+    // returns the raw bench data unchanged.
+    if (bench || demo) {
       if (!opts.benchLoader) {
         setState({ status: "idle" });
         return;
@@ -537,7 +538,7 @@ export function useApi<T>(
       setState({ status: "idle" });
       return;
     }
-    if (!config || demo) {
+    if (!config) {
       setState({ status: "idle" });
       return;
     }
@@ -584,17 +585,18 @@ export function asLoader<T>(fn: (c: Config, signal?: AbortSignal) => Promise<T>)
 }
 
 export function useAuthProvider(): AuthCtx {
-  // Bench mode is decided once at mount from the URL. It overrides demo +
-  // config: the dashboard treats /benchmark as a sealed read-only context.
+  // Bench + demo are decided once at mount from the URL. Mutually
+  // exclusive (bench wins on the /benchmark path). Both override config:
+  // the dashboard treats /benchmark and /demo as sealed contexts whose
+  // data comes from the public endpoints.
   const bench = useMemo(() => isBenchPath(), []);
+  const demo = useMemo(() => !bench && isDemoPath(), [bench]);
   const [config, setConfig] = useState<Config | null>(() =>
-    bench ? null : loadConfig(),
-  );
-  const [demo, setDemoState] = useState<boolean>(() =>
-    bench ? false : loadDemoFlag(),
+    bench || demo ? null : loadConfig(),
   );
   const [connection, setConnection] = useState<ConnectionState>(() => {
     if (bench) return { status: "connected", customerId: "cust_7931de9f766452ac" };
+    if (demo) return { status: "connected", customerId: "demo-projection" };
     return loadConfig()
       ? { status: "connected", customerId: null }
       : { status: "disconnected" };
@@ -631,13 +633,8 @@ export function useAuthProvider(): AuthCtx {
       });
   }, [config]);
 
-  const setDemo = useCallback((on: boolean) => {
-    setDemoFlag(on);
-    setDemoState(on);
-  }, []);
-
   return useMemo(
-    () => ({ config, demo, bench, setDemo, connection, connect, disconnect, ping }),
-    [config, demo, bench, setDemo, connection, connect, disconnect, ping],
+    () => ({ config, demo, bench, connection, connect, disconnect, ping }),
+    [config, demo, bench, connection, connect, disconnect, ping],
   );
 }

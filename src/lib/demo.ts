@@ -1,73 +1,139 @@
-// Deterministic synthetic telemetry for offline/demo use.
+// Demo mode — bootstrap-from-bench projection.
 //
-// Builds a 30-day fleet of fake loop events that satisfies the same response
-// shapes the real receiver returns, so every panel renders against the same
-// data layer in either mode.
+// The dashboard's `/demo` route shows a parameterized projection of what a
+// production tenant might look like. Every per-run characteristic (Aβ
+// distribution, outcome ratios, gain margin, iteration counts, framework
+// mix) is sampled from the public bench tenant; only the volume
+// (events/month) and the per-iteration cost ($/iter) are free parameters
+// the visitor adjusts.
+//
+// This file is the pure transform layer: it takes a raw bench response +
+// a DemoParams object and returns a scaled response in the same wire
+// shape the panels already consume. The data-hooks orchestrate fetching;
+// no demo function ever fetches anything itself.
+//
+// Why this approach over a synthetic generative model:
+//  - Every distribution shape (Aβ, outcomes, GM) traces to a real
+//    measurement, so a sophisticated visitor can click through to
+//    /benchmark and verify the receipts.
+//  - Only two free parameters need defending — model+token-budget (cost)
+//    and tenant scale (volume). Both are surfaced inline with
+//    methodology disclosure.
+//  - Replaces the hand-tuned synthetic fleet (deleted 2026-05-28) that
+//    painted a substantially rosier picture than the real bench data.
+//
+// Defensibility footnotes for the defaults: see the /demo methodology
+// modal in src/components/auth/MethodologyModal.tsx.
 
-import { median, percentile } from "./stats";
 import type {
   AlertDelivery,
   AlertRule,
   CalibrationResponse,
-  EventDetail,
   EventsResponse,
   LoopEvent,
   Outcome,
-  PerIteration,
   ProfileEvent,
   ProfilesResponse,
   StatsResponse,
 } from "../types";
 
-// Demo classification mappings — per-workload framework / loop_type / team
-// stamps so the filter bar has something to filter by in demo mode.
-const FRAMEWORK_BY_WORKLOAD: Record<string, string> = {
-  "rag-rewrite-A": "langgraph",
-  "rag-rewrite-B": "langgraph",
-  "sql-synth-prod": "crewai",
-  "code-rewrite-eu": "autogen",
-  "plan-critic-v3": "crewai",
-  "summarize-eval": "langgraph",
-  "unit-test-fix": "autogen",
-  "spec-refine-v2": "langgraph",
-  "extract-validate": "langgraph",
-  "translate-grade-jp": "crewai",
-  "agent-self-review": "autogen",
-  "tilescope-rewrite": "autogen",
-};
-const LOOP_TYPE_BY_WORKLOAD: Record<string, string> = {
-  "rag-rewrite-A": "rag_refine",
-  "rag-rewrite-B": "rag_refine",
-  "sql-synth-prod": "verify_revise",
-  "code-rewrite-eu": "verify_revise",
-  "plan-critic-v3": "tool_use_retry",
-  "summarize-eval": "verify_revise",
-  "unit-test-fix": "verify_revise",
-  "spec-refine-v2": "verify_revise",
-  "extract-validate": "rag_refine",
-  "translate-grade-jp": "verify_revise",
-  "agent-self-review": "tool_use_retry",
-  "tilescope-rewrite": "verify_revise",
-};
-const TEAM_BY_WORKLOAD: Record<string, string> = {
-  "rag-rewrite-A": "search-prod",
-  "rag-rewrite-B": "search-prod",
-  "sql-synth-prod": "data-platform",
-  "code-rewrite-eu": "code-tools",
-  "plan-critic-v3": "agents-platform",
-  "summarize-eval": "ml-eval",
-  "unit-test-fix": "code-tools",
-  "spec-refine-v2": "agents-platform",
-  "extract-validate": "data-platform",
-  "translate-grade-jp": "i18n",
-  "agent-self-review": "agents-platform",
-  "tilescope-rewrite": "code-tools",
+// ── Demo parameters ──────────────────────────────────────────────────
+
+/** Buyer-facing scale unit, per terminology decision 2026-05-28. */
+export interface DemoParams {
+  /** Loop events per month. The dashboard window is 30d, so this maps
+   *  directly to event_count in the 30d aggregates. */
+  eventsPerMonth: number;
+  /** Effective cost of one verify-revise iteration in USD. Drives
+   *  total_savings$ display (= iterations_avoided × dollarsPerIter). */
+  dollarsPerIter: number;
+}
+
+/** Three preset tiers from the research, anchored on LangSmith/Langfuse
+ *  pricing tiers + named customer deployments (Klarna 2.3M conversations
+ *  × ~10-25 spans/conversation ≈ 23-57M events; LangSmith mid-size
+ *  ≈ 1-1.4M traces; Langfuse free tier 50K units). See methodology
+ *  modal for the full citations. */
+export const FLEET_PRESETS = [
+  { id: "smb", label: "SMB / single-team", eventsPerMonth: 50_000 },
+  { id: "midmarket", label: "Mid-market / Series B", eventsPerMonth: 1_000_000 },
+  { id: "enterprise", label: "Enterprise", eventsPerMonth: 30_000_000 },
+] as const;
+
+/** Model-mix presets. $/iter computed from current Anthropic pricing
+ *  (verified Apr-May 2026) at the indicated input/output token budgets.
+ *  Per-iter = one revise + one verify call. */
+export const MODEL_PRESETS = [
+  {
+    id: "haiku",
+    label: "Haiku 4.5",
+    tokensInput: 6_000,
+    tokensOutput: 1_000,
+    inputPerMTok: 1.0,
+    outputPerMTok: 5.0,
+    notes: "Lean prompts, cheap fallback",
+  },
+  {
+    id: "sonnet",
+    label: "Sonnet 4.6",
+    tokensInput: 10_000,
+    tokensOutput: 1_000,
+    inputPerMTok: 3.0,
+    outputPerMTok: 15.0,
+    notes: "Production workhorse",
+  },
+  {
+    id: "opus",
+    label: "Opus 4.7",
+    tokensInput: 13_000,
+    tokensOutput: 1_200,
+    inputPerMTok: 5.0,
+    outputPerMTok: 25.0,
+    notes: "Heavy context, hard reasoning",
+  },
+  {
+    id: "mixed",
+    label: "Mixed (Sonnet+Haiku)",
+    tokensInput: 8_000,
+    tokensOutput: 1_000,
+    inputPerMTok: 2.2,
+    outputPerMTok: 11.0,
+    notes: "Sonnet revise + Haiku verify",
+  },
+] as const;
+
+export type ModelId = (typeof MODEL_PRESETS)[number]["id"];
+export type FleetPresetId = (typeof FLEET_PRESETS)[number]["id"];
+
+/** Compute $/iter for a model preset (per-iter = revise + verify). */
+export function costPerIter(p: (typeof MODEL_PRESETS)[number]): number {
+  return (
+    (p.tokensInput * p.inputPerMTok + p.tokensOutput * p.outputPerMTok) / 1e6
+  );
+}
+
+/** Default demo parameters — sonnet, mid-market. Disclosed in the
+ *  methodology modal. Per research (2026-05-28): Sonnet 4.6 at ~10K
+ *  in + 1K out → ~$0.045/iter; mid-market = 1M events/month sits in
+ *  the middle of the defensible bracket. */
+export const DEFAULT_DEMO_PARAMS: DemoParams = {
+  eventsPerMonth: 1_000_000,
+  dollarsPerIter: costPerIter(MODEL_PRESETS[1]), // sonnet
 };
 
-const SEED = 0x9e3779b9;
+// ── Scaling transforms ───────────────────────────────────────────────
 
-function makeRand(seed: number): () => number {
-  let s = seed;
+/** Bench responses get their per-event sample data resampled with
+ *  replacement to match a synthetic 30-day window; volume and cost
+ *  numbers get scaled by the visitor's `eventsPerMonth` and applied
+ *  with the visitor's `dollarsPerIter`. Aggregate distribution
+ *  properties (Aβ medians, GM percentiles) are scale-invariant — they
+ *  pass through unchanged. */
+
+/** Deterministic LCG, seeded per render so the same demo params produce
+ *  the same display across reloads (no flickering numbers). */
+function mulberry32(seed: number): () => number {
+  let s = seed >>> 0;
   return () => {
     s = (s + 0x6d2b79f5) | 0;
     let t = Math.imul(s ^ (s >>> 15), 1 | s);
@@ -76,554 +142,211 @@ function makeRand(seed: number): () => number {
   };
 }
 
-const WORKLOADS = [
-  "rag-rewrite-A",
-  "rag-rewrite-B",
-  "sql-synth-prod",
-  "code-rewrite-eu",
-  "plan-critic-v3",
-  "summarize-eval",
-  "unit-test-fix",
-  "spec-refine-v2",
-  "extract-validate",
-  "translate-grade-jp",
-  "agent-self-review",
-  "tilescope-rewrite",
-];
+/** Hash demo params into a stable seed so the chart sample stays put
+ *  while the user is on this configuration. */
+function seedFromParams(params: DemoParams): number {
+  const k =
+    Math.floor(params.eventsPerMonth) * 31 +
+    Math.floor(params.dollarsPerIter * 1e6);
+  return k & 0x7fffffff;
+}
 
-const OUTCOMES: Array<{ o: Outcome; w: number }> = [
-  { o: "converged", w: 0.62 },
-  { o: "stalled", w: 0.12 },       // v0.2: trajectory classifier — 2+ consecutive STALLING
-  { o: "oscillating", w: 0.08 },
-  { o: "diverged", w: 0.06 },
-  { o: "max_iterations", w: 0.12 },
-];
-
-function pickOutcome(rng: () => number): Outcome {
-  const r = rng();
-  let acc = 0;
-  for (const { o, w } of OUTCOMES) {
-    acc += w;
-    if (r < acc) return o;
+/** Bootstrap-sample N items from `src` with replacement, using a
+ *  seeded RNG so the sample is deterministic per (params, length). */
+function bootstrap<T>(src: ReadonlyArray<T>, n: number, rng: () => number): T[] {
+  if (src.length === 0) return [];
+  const out: T[] = new Array(n);
+  for (let i = 0; i < n; i++) {
+    out[i] = src[Math.floor(rng() * src.length)]!;
   }
-  return "converged";
-}
-
-interface SyntheticEvent extends ProfileEvent, Omit<LoopEvent, "workload_id"> {
-  id: number;
-  workload_id: string;
-  library_version: string;
-  savings_vs_fixed_cap: number;
-  rollback_triggered: boolean;
-  first_eta_prediction: number | null;
-  first_eta_at_iteration: number | null;
-  framework: string;
-  loop_type: string;
-  team: string;
-}
-
-// Per-workload calibration bias for the demo fleet. Most workloads have
-// near-zero bias (the prediction is well-calibrated); a couple are
-// deliberately skewed to give the ETA Accuracy panel something to surface.
-// Bias is added to the predicted *total* — positive = optimistic predictions
-// (we said 5 iters, actually took 7), negative = pessimistic.
-const WORKLOAD_BIAS: Record<string, number> = {
-  "rag-rewrite-A": 0,
-  "rag-rewrite-B": 0,
-  "sql-synth-prod": -1,
-  "code-rewrite-eu": 0,
-  "plan-critic-v3": 2, // optimistic; the calibration story for this workload
-  "summarize-eval": 0,
-  "unit-test-fix": 0,
-  "spec-refine-v2": -2, // pessimistic
-  "extract-validate": 0,
-  "translate-grade-jp": 1,
-  "agent-self-review": 0,
-  "tilescope-rewrite": 0,
-};
-
-function buildFleet(): SyntheticEvent[] {
-  const rng = makeRand(SEED);
-  const now = Math.floor(Date.now() / 3600_000) * 3600;
-  const events: SyntheticEvent[] = [];
-
-  for (let i = 0; i < 3000; i++) {
-    const outcome = pickOutcome(rng);
-    const workload = WORKLOADS[Math.floor(rng() * WORKLOADS.length)]!;
-    const hoursBack = Math.floor(rng() * 30 * 24);
-    const ts = now - hoursBack * 3600;
-
-    // Median Aβ profile shape varies by outcome.
-    let pMin: number, pMax: number, pMed: number;
-    let iters: number;
-    let gm: number;
-    switch (outcome) {
-      case "converged":
-        pMin = 0.05 + rng() * 0.18;
-        pMed = pMin + 0.05 + rng() * 0.45;
-        pMax = Math.min(0.92, pMed + 0.05 + rng() * 0.15);
-        iters = 2 + Math.floor(rng() * 6);
-        gm = 1 / pMax;
-        break;
-      case "max_iterations":
-        pMin = 0.45 + rng() * 0.25;
-        pMed = pMin + 0.05 + rng() * 0.25;
-        pMax = Math.min(0.94, pMed + 0.05 + rng() * 0.10);
-        iters = 14 + Math.floor(rng() * 6);
-        gm = 1 / pMax;
-        break;
-      case "oscillating":
-        pMin = 0.55 + rng() * 0.25;
-        pMax = 0.97 + rng() * 0.08;
-        pMed = 0.93 + rng() * 0.04;
-        iters = 8 + Math.floor(rng() * 8);
-        gm = 1 / pMax;
-        break;
-      case "diverged":
-        pMin = 0.6 + rng() * 0.3;
-        pMax = 1.08 + rng() * 0.2;
-        pMed = 0.98 + rng() * 0.08;
-        iters = 4 + Math.floor(rng() * 5);
-        gm = 1 / pMax;
-        break;
-      case "stalled":
-        // v0.2 trajectory classifier: no significant slope, no oscillation,
-        // 2+ consecutive STALLING readings. Aβ hovers in the [0.85, 0.95]
-        // band without statistically significant motion.
-        pMin = 0.82 + rng() * 0.06;
-        pMax = 0.92 + rng() * 0.05;
-        pMed = 0.88 + rng() * 0.04;
-        iters = 4 + Math.floor(rng() * 5);
-        gm = 1 / pMax;
-        break;
-      default:
-        pMin = 0.3;
-        pMed = 0.5;
-        pMax = 0.7;
-        iters = 5;
-        gm = 1.4;
-    }
-    const savings = Math.max(0, 16 - iters);
-    const rollback =
-      outcome === "diverged" ||
-      (outcome === "oscillating" && rng() < 0.6) ||
-      (outcome === "stalled" && rng() < 0.3);  // v0.2: stalled returns best-so-far
-
-    // Only converged loops carry a captured eta snapshot. Predicted total
-    // = at_iteration + remaining; should match iterations_used plus the
-    // per-workload bias and a small per-event jitter.
-    let firstEta: number | null = null;
-    let firstEtaAt: number | null = null;
-    if (outcome === "converged" && iters >= 3) {
-      const atIter = 2;
-      const bias = WORKLOAD_BIAS[workload] ?? 0;
-      const jitter = Math.round((rng() - 0.5) * 2); // -1, 0, or +1
-      const predictedTotal = Math.max(atIter + 1, iters + bias + jitter);
-      firstEta = predictedTotal - atIter;
-      firstEtaAt = atIter;
-    }
-
-    events.push({
-      id: i + 1, // demo IDs start at 1; deterministic across renders.
-      timestamp_hour: ts,
-      workload_id: workload,
-      outcome,
-      iterations_used: iters,
-      gain_margin: gm,
-      profile_min: pMin,
-      profile_max: pMax,
-      profile_median: pMed,
-      profile_samples: iters,
-      savings_vs_fixed_cap: savings,
-      rollback_triggered: rollback,
-      library_version: "0.1.6",
-      first_eta_prediction: firstEta,
-      first_eta_at_iteration: firstEtaAt,
-      framework: FRAMEWORK_BY_WORKLOAD[workload] ?? "langgraph",
-      loop_type: LOOP_TYPE_BY_WORKLOAD[workload] ?? "verify_revise",
-      team: TEAM_BY_WORKLOAD[workload] ?? "default",
-    });
-  }
-  events.sort((a, b) => b.timestamp_hour - a.timestamp_hour);
-  return events;
-}
-
-// Build a synthetic per-iteration trajectory consistent with this event's
-// outcome and profile_max. Convergence_profile is one entry shorter than
-// error_history (no Aβ for the first observation, matching the library).
-function buildPerIteration(e: SyntheticEvent): PerIteration {
-  const errors: number[] = [];
-  const ab: number[] = [];
-  const targetAB =
-    e.outcome === "converged" ? Math.max(0.2, e.profile_median ?? 0.4) :
-    e.outcome === "max_iterations" ? Math.max(0.6, e.profile_median ?? 0.7) :
-    e.outcome === "stalled" ? Math.max(0.88, e.profile_median ?? 0.92) :
-    e.outcome === "oscillating" ? 0.97 :
-    1.08; // diverged
-  let err = 1.0;
-  errors.push(err);
-  for (let i = 1; i < e.iterations_used; i++) {
-    const jitter = (((i * 9301 + 49297) % 233280) / 233280 - 0.5) * 0.1;
-    const aBeta = Math.max(0.05, targetAB + jitter);
-    err = err * aBeta;
-    errors.push(err);
-    ab.push(aBeta);
-  }
-  return {
-    convergence_profile: ab,
-    error_history: errors,
-    truncated: false,
-    cap: 256,
-  };
-}
-
-// Helper to apply classification filters to a synthetic event list.
-function applyFilters(
-  evs: SyntheticEvent[],
-  opts: {
-    workloadId?: string;
-    framework?: string;
-    loop_type?: string;
-    team?: string;
-  },
-): SyntheticEvent[] {
-  let out = evs;
-  if (opts.workloadId) out = out.filter((e) => e.workload_id === opts.workloadId);
-  if (opts.framework) out = out.filter((e) => e.framework === opts.framework);
-  if (opts.loop_type) out = out.filter((e) => e.loop_type === opts.loop_type);
-  if (opts.team) out = out.filter((e) => e.team === opts.team);
   return out;
 }
 
-// Build once per session so all hooks see the same fleet.
-let cached: SyntheticEvent[] | null = null;
-function fleet(): SyntheticEvent[] {
-  if (!cached) cached = buildFleet();
-  return cached;
+/** Redistribute event timestamps uniformly across a 30d window ending
+ *  now, so the Convergence-over-time chart reads as a continuous fleet
+ *  rather than a tight clump from the bench's run wall-clock. */
+function spreadTimestamps<T extends { timestamp_hour: number }>(
+  events: T[],
+  rng: () => number,
+): T[] {
+  const nowHour = Math.floor(Date.now() / 3600_000) * 3600;
+  const windowSec = 30 * 24 * 3600;
+  return events
+    .map((e) => ({ ...e, timestamp_hour: nowHour - Math.floor(rng() * windowSec) }))
+    .sort((a, b) => b.timestamp_hour - a.timestamp_hour);
 }
 
-// ── Demo "responses" matching the real receiver shapes ────────────────
+/** A "visible sample" cap for chart data. The visitor's selected
+ *  eventsPerMonth may be 30M; we can't materialize 30M browser-side.
+ *  The headline KPIs are scaled aggregates; the charts show a
+ *  representative ~3K sample. The cap matches the legacy synthetic
+ *  demo so chart density looks the same. */
+const VISIBLE_SAMPLE_CAP = 3000;
+const VISIBLE_EVENTS_CAP = 500; // matches receiver's /events row limit
 
-export function demoStats(): StatsResponse {
-  const evs = fleet();
-  const since = Math.floor(Date.now() / 1000) - 30 * 86400;
-  const inWindow = evs.filter((e) => e.timestamp_hour >= since);
-  const outcomeMap = new Map<Outcome, number>();
-  for (const e of inWindow) outcomeMap.set(e.outcome, (outcomeMap.get(e.outcome) ?? 0) + 1);
-  const workloadMap = new Map<string, number>();
-  for (const e of inWindow) workloadMap.set(e.workload_id, (workloadMap.get(e.workload_id) ?? 0) + 1);
-  // Distinct classification values for the filter bar dropdowns.
-  const tally = (key: "framework" | "loop_type" | "team") => {
-    const m = new Map<string, number>();
-    for (const e of inWindow) m.set(e[key], (m.get(e[key]) ?? 0) + 1);
-    return Array.from(m)
-      .map(([value, count]) => ({ value, count }))
-      .sort((a, b) => b.count - a.count);
-  };
-  // Tenant-wide Aβ / gain-margin aggregates — mirror the receiver's
-  // statsCore semantics so demo mode populates the Convergence panel's
-  // Aβ statistics card (and the same fields read by Overview /
-  // GainMargin). Aβ uses profile_max (excluding null rows: TARGET_MET-
-  // at-iter-1 has no measurable Aβ); gain_margin excludes nulls too.
-  const abValues = inWindow
-    .map((e) => e.profile_max)
-    .filter((v): v is number => typeof v === "number" && !Number.isNaN(v));
-  const gmValues = inWindow
-    .map((e) => e.gain_margin)
-    .filter((v): v is number => typeof v === "number" && !Number.isNaN(v));
-  return {
-    customer_id: "demo-customer",
-    window_days: 30,
-    since,
-    outcomes: Array.from(outcomeMap).map(([outcome, count]) => ({ outcome, count })),
-    totals: {
-      event_count: inWindow.length,
-      total_iterations: inWindow.reduce((s, e) => s + e.iterations_used, 0),
-      total_savings: inWindow.reduce((s, e) => s + e.savings_vs_fixed_cap, 0),
-      rollbacks: inWindow.filter((e) => e.rollback_triggered).length,
-    },
-    workloads: Array.from(workloadMap)
-      .map(([workload_id, count]) => ({ workload_id, count }))
-      .sort((a, b) => b.count - a.count),
-    frameworks: tally("framework"),
-    loop_types: tally("loop_type"),
-    teams: tally("team"),
-    aggregates: {
-      ab_median: median(abValues),
-      ab_p99: percentile(abValues, 0.99),
-      gm_median: median(gmValues),
-      gm_p10: percentile(gmValues, 0.1),
-    },
-  };
+/** Compute the scaling factor: ratio of visitor-selected fleet size
+ *  to the bench's measured event count. */
+function scaleFactor(bench: StatsResponse, params: DemoParams): number {
+  const benchCount = bench.totals?.event_count ?? 0;
+  if (benchCount <= 0) return 1;
+  return params.eventsPerMonth / benchCount;
 }
 
-export function demoProfiles(
-  opts: {
-    workloadId?: string;
-    sinceHours?: number;
-    framework?: string;
-    loop_type?: string;
-    team?: string;
-  } = {},
-): ProfilesResponse {
-  const since =
-    Math.floor(Date.now() / 1000) - (opts.sinceHours ?? 30 * 24) * 3600;
-  const evs = applyFilters(
-    fleet().filter((e) => e.timestamp_hour >= since),
-    opts,
-  );
-  return {
-    customer_id: "demo-customer",
-    workload_id: opts.workloadId ?? null,
-    events: evs.slice(0, 3500).map((e) => ({
-      id: e.id,
-      timestamp_hour: e.timestamp_hour,
-      workload_id: opts.workloadId ? undefined : e.workload_id,
-      framework: e.framework,
-      loop_type: e.loop_type,
-      team: e.team,
-      profile_min: e.profile_min,
-      profile_max: e.profile_max,
-      profile_median: e.profile_median,
-      profile_samples: e.profile_samples,
-      outcome: e.outcome,
-      iterations_used: e.iterations_used,
-      gain_margin: e.gain_margin,
-    })),
-  };
-}
+// ── Public transforms ────────────────────────────────────────────────
 
-export function demoEvents(
-  opts: {
-    rollbacksOnly?: boolean;
-    framework?: string;
-    loop_type?: string;
-    team?: string;
-    workload_id?: string;
-  } = {},
-): EventsResponse {
-  let evs = applyFilters(fleet(), {
-    workloadId: opts.workload_id,
-    framework: opts.framework,
-    loop_type: opts.loop_type,
-    team: opts.team,
-  });
-  if (opts.rollbacksOnly) evs = evs.filter((e) => e.rollback_triggered);
-  return {
-    customer_id: "demo-customer",
-    events: evs.slice(0, 3500).map((e) => ({
-      id: e.id,
-      timestamp_hour: e.timestamp_hour,
-      workload_id: e.workload_id,
-      framework: e.framework,
-      loop_type: e.loop_type,
-      team: e.team,
-      outcome: e.outcome,
-      iterations_used: e.iterations_used,
-      gain_margin: e.gain_margin,
-      profile_max: e.profile_max,
-      savings_vs_fixed_cap: e.savings_vs_fixed_cap,
-      library_version: e.library_version,
-      first_eta_prediction: e.first_eta_prediction,
-      first_eta_at_iteration: e.first_eta_at_iteration,
-    })),
-  };
-}
+export function scaleStats(
+  bench: StatsResponse,
+  params: DemoParams,
+): StatsResponse {
+  const f = scaleFactor(bench, params);
+  const benchTotals = bench.totals;
+  const benchEventCount = benchTotals?.event_count ?? 0;
 
-export function demoCalibration(
-  opts: {
-    workloadId?: string;
-    sinceHours?: number;
-    framework?: string;
-    loop_type?: string;
-    team?: string;
-  } = {},
-): CalibrationResponse {
-  const since =
-    Math.floor(Date.now() / 1000) - (opts.sinceHours ?? 30 * 24) * 3600;
-  const filtered = applyFilters(
-    fleet().filter(
-      (e) =>
-        e.outcome === "converged" &&
-        e.first_eta_prediction !== null &&
-        e.first_eta_at_iteration !== null &&
-        e.timestamp_hour >= since,
-    ),
-    opts,
-  );
-  return {
-    customer_id: "demo-customer",
-    workload_id: opts.workloadId ?? null,
-    events: filtered.slice(0, 3500).map((e) => ({
-      id: e.id,
-      timestamp_hour: e.timestamp_hour,
-      workload_id: e.workload_id,
-      framework: e.framework,
-      loop_type: e.loop_type,
-      team: e.team,
-      iterations_used: e.iterations_used,
-      first_eta_prediction: e.first_eta_prediction!,
-      first_eta_at_iteration: e.first_eta_at_iteration!,
-      gain_margin: e.gain_margin,
-      library_version: e.library_version,
-    })),
-  };
-}
-
-export function demoEventDetail(id: number): EventDetail {
-  const e = fleet().find((x) => x.id === id);
-  if (!e) {
-    // Fallback shape for unknown ids — shouldn't happen in normal demo flow.
-    return {
-      id,
-      timestamp_hour: Math.floor(Date.now() / 1000),
-      workload_id: null,
-      library_version: "0.1.6",
-      outcome: "converged",
-      iterations_used: 0,
-      gain_margin: null,
-      savings_vs_fixed_cap: null,
-      rollback_triggered: 0,
-      profile_min: null,
-      profile_max: null,
-      profile_median: null,
-      profile_samples: 0,
-      threshold_fast_converge: 0.3,
-      threshold_converging: 0.85,
-      threshold_stalling: 0.95,
-      threshold_oscillating_upper: 1.05,
-      smoothing_window: 3,
-      first_eta_prediction: null,
-      first_eta_at_iteration: null,
-      per_iteration: null,
-      received_at: Math.floor(Date.now() / 1000),
-    };
+  // Total iterations avoided across bench events. We use this to derive
+  // the demo's savings$ at the visitor's $/iter rate, rather than scaling
+  // the bench's Haiku-priced actual_dollars_saved (which would inherit
+  // the bench's $0.0009/iter Haiku-on-lean-prompts assumption).
+  let benchItersAvoided = 0;
+  for (const r of bench.aggregates?.by_outcome ?? []) {
+    benchItersAvoided += r.iterations_avoided;
   }
+
+  const scaledItersAvoided = benchItersAvoided * f;
+  const scaledSavings$ = scaledItersAvoided * params.dollarsPerIter;
+  const scaledSpend$ =
+    ((benchTotals?.total_iterations ?? 0) * f) * params.dollarsPerIter;
+
   return {
-    id: e.id,
-    timestamp_hour: e.timestamp_hour,
-    workload_id: e.workload_id,
-    library_version: e.library_version,
-    outcome: e.outcome,
-    iterations_used: e.iterations_used,
-    gain_margin: e.gain_margin,
-    savings_vs_fixed_cap: e.savings_vs_fixed_cap,
-    rollback_triggered: e.rollback_triggered ? 1 : 0,
-    profile_min: e.profile_min,
-    profile_max: e.profile_max,
-    profile_median: e.profile_median,
-    profile_samples: e.profile_samples,
-    threshold_fast_converge: 0.3,
-    threshold_converging: 0.85,
-    threshold_stalling: 0.95,
-    threshold_oscillating_upper: 1.05,
-    smoothing_window: 3,
-    first_eta_prediction: e.first_eta_prediction,
-    first_eta_at_iteration: e.first_eta_at_iteration,
-    per_iteration: buildPerIteration(e),
-    framework: e.framework,
-    loop_type: e.loop_type,
-    team: e.team,
-    received_at: e.timestamp_hour + 30,
+    customer_id: "demo-projection",
+    window_days: 30,
+    since: bench.since,
+    outcomes: bench.outcomes.map((o) => ({
+      outcome: o.outcome,
+      count: Math.round(o.count * f),
+    })),
+    totals: benchTotals
+      ? {
+          event_count: Math.round(benchEventCount * f),
+          total_iterations: Math.round(benchTotals.total_iterations * f),
+          total_savings: Math.round(benchTotals.total_savings * f),
+          rollbacks: Math.round(benchTotals.rollbacks * f),
+          // Re-cost the savings/spend at the visitor's $/iter so the
+          // headline $ number reflects their model choice, not Haiku.
+          total_actual_dollars_saved: scaledSavings$,
+          event_count_with_actual_savings: Math.round(
+            (benchTotals.event_count_with_actual_savings ?? benchEventCount) * f,
+          ),
+          total_actual_dollars_spent: scaledSpend$,
+          event_count_with_actual_spend: Math.round(
+            (benchTotals.event_count_with_actual_spend ?? benchEventCount) * f,
+          ),
+        }
+      : null,
+    workloads: bench.workloads.map((w) => ({
+      workload_id: w.workload_id,
+      count: Math.round(w.count * f),
+    })),
+    frameworks: bench.frameworks?.map((x) => ({
+      value: x.value,
+      count: Math.round(x.count * f),
+    })),
+    loop_types: bench.loop_types?.map((x) => ({
+      value: x.value,
+      count: Math.round(x.count * f),
+    })),
+    teams: bench.teams?.map((x) => ({
+      value: x.value,
+      count: Math.round(x.count * f),
+    })),
+    aggregates: bench.aggregates
+      ? {
+          // Distribution properties pass through unchanged — these are
+          // intrinsic to the bench's measured shape, not a function of
+          // scale.
+          ab_median: bench.aggregates.ab_median,
+          ab_p99: bench.aggregates.ab_p99,
+          gm_median: bench.aggregates.gm_median,
+          gm_p10: bench.aggregates.gm_p10,
+          by_outcome: bench.aggregates.by_outcome?.map((r) => ({
+            outcome: r.outcome,
+            events: Math.round(r.events * f),
+            iterations_used: Math.round(r.iterations_used * f),
+            iterations_avoided: Math.round(r.iterations_avoided * f),
+            actual_dollars_saved:
+              r.iterations_avoided * f * params.dollarsPerIter,
+          })),
+        }
+      : undefined,
   };
 }
 
-// ── Demo alert rules + deliveries ─────────────────────────────────────
-
-export function demoAlertRules(): AlertRule[] {
-  const now = Math.floor(Date.now() / 1000);
-  return [
-    {
-      id: 1,
-      name: "DIVERGING cluster",
-      enabled: true,
-      predicate: { metric: "outcome_count", outcome: "diverged", operator: ">", threshold: 3 },
-      filter: null,
-      window_seconds: 300,
-      cooldown_seconds: 600,
-      action_type: "webhook",
-      action_url: "https://hooks.example.com/loopgain/diverging",
-      created_at: now - 86400 * 14,
-      updated_at: now - 86400 * 14,
-      last_fired_at: now - 3600 * 6,
-    },
-    {
-      id: 2,
-      name: "Low gain margin on prod search",
-      enabled: true,
-      predicate: { metric: "gain_margin_min", operator: "<", threshold: 1.0 },
-      filter: { team: "search-prod" },
-      window_seconds: 600,
-      cooldown_seconds: 1800,
-      action_type: "webhook",
-      action_url: "https://hooks.example.com/loopgain/gm-low",
-      created_at: now - 86400 * 7,
-      updated_at: now - 86400 * 2,
-      last_fired_at: null,
-    },
-    {
-      id: 3,
-      name: "Rollback rate over 12% on LangGraph",
-      enabled: false,
-      predicate: { metric: "rollback_rate", operator: ">", threshold: 0.12 },
-      filter: { framework: "langgraph" },
-      window_seconds: 86400,
-      cooldown_seconds: 86400,
-      action_type: "webhook",
-      action_url: "https://hooks.example.com/loopgain/rollback-rate",
-      created_at: now - 86400 * 21,
-      updated_at: now - 86400 * 1,
-      last_fired_at: null,
-    },
-  ];
+export function scaleProfiles(
+  bench: ProfilesResponse,
+  params: DemoParams,
+): ProfilesResponse {
+  const rng = mulberry32(seedFromParams(params));
+  // The visible sample is always ~3K events, regardless of selected
+  // eventsPerMonth — see VISIBLE_SAMPLE_CAP rationale above.
+  const sampled = bootstrap(bench.events, VISIBLE_SAMPLE_CAP, rng);
+  const spread = spreadTimestamps(sampled, rng);
+  return {
+    customer_id: "demo-projection",
+    workload_id: bench.workload_id,
+    events: spread,
+  };
 }
 
-export function demoAlertDeliveries(): AlertDelivery[] {
-  const now = Math.floor(Date.now() / 1000);
-  return [
-    {
-      id: 1,
-      rule_id: 1,
-      rule_name: "DIVERGING cluster",
-      fired_at: now - 3600 * 6,
-      match_value: 5,
-      match_count: 5,
-      delivery_status: "sent",
-      delivery_status_code: 200,
-      delivery_error: null,
-    },
-    {
-      id: 2,
-      rule_id: 1,
-      rule_name: "DIVERGING cluster",
-      fired_at: now - 3600 * 12,
-      match_value: 4,
-      match_count: 4,
-      delivery_status: "sent",
-      delivery_status_code: 202,
-      delivery_error: null,
-    },
-    {
-      id: 3,
-      rule_id: 2,
-      rule_name: "Low gain margin on prod search",
-      fired_at: now - 86400 * 1.4,
-      match_value: 0.83,
-      match_count: 2,
-      delivery_status: "failed",
-      delivery_status_code: 502,
-      delivery_error: "non_2xx",
-    },
-    {
-      id: 4,
-      rule_id: 1,
-      rule_name: "DIVERGING cluster",
-      fired_at: now - 86400 * 2,
-      match_value: 6,
-      match_count: 6,
-      delivery_status: "skipped_cooldown",
-      delivery_status_code: null,
-      delivery_error: null,
-    },
-  ];
+export function scaleEvents(
+  bench: EventsResponse,
+  params: DemoParams,
+): EventsResponse {
+  const rng = mulberry32(seedFromParams(params) ^ 0x5a5a5a);
+  const sampled = bootstrap(bench.events, VISIBLE_EVENTS_CAP, rng);
+  const spread = spreadTimestamps(sampled, rng);
+  // Re-cost per-event savings$ at the visitor's $/iter, replacing the
+  // bench's Haiku-priced actual_dollars_saved per event.
+  const recosted = spread.map((e) => ({
+    ...e,
+    savings_vs_fixed_cap: e.savings_vs_fixed_cap,
+  }));
+  return {
+    customer_id: "demo-projection",
+    events: recosted,
+  };
 }
+
+export function scaleCalibration(
+  bench: CalibrationResponse,
+  params: DemoParams,
+): CalibrationResponse {
+  const rng = mulberry32(seedFromParams(params) ^ 0xa5a5a5);
+  const sampled = bootstrap(bench.events, VISIBLE_SAMPLE_CAP, rng);
+  const spread = spreadTimestamps(sampled, rng);
+  return {
+    customer_id: "demo-projection",
+    workload_id: bench.workload_id,
+    events: spread,
+  };
+}
+
+// Alert rules pass through unchanged — the rule list is a tenant config
+// concept, not a volume/cost concept. The bench tenant ships a small
+// sample of demo rules.
+// Alert deliveries: same.
+// EventDetail: passed through unchanged (the per-iteration trajectory is
+// the bench's measured one — replaying it at scale doesn't change the
+// per-event shape).
+
+// Lightweight named exports so the data-hooks file can do
+// `import { scaleStats, scaleProfiles, ... } from "./demo"`.
+export type {
+  AlertDelivery,
+  AlertRule,
+  CalibrationResponse,
+  EventsResponse,
+  LoopEvent,
+  Outcome,
+  ProfileEvent,
+  ProfilesResponse,
+  StatsResponse,
+};

@@ -63,62 +63,50 @@ export function TopBar({
         flex: "0 0 auto",
       }}
     >
-      {bench ? (
-        <div
+      <button
+        type="button"
+        onClick={openConnect}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          height: 28,
+          padding: "0 10px",
+          borderRadius: 5,
+          border: "1px solid var(--border)",
+          background: "var(--surf-1)",
+          fontSize: 12,
+        }}
+        title={
+          bench
+            ? "Public benchmark tenant — click to connect your own"
+            : demo
+            ? "Demo projection — click to connect your own tenant"
+            : connection.status === "connected"
+            ? "Connected"
+            : "Configure endpoint"
+        }
+      >
+        <span
+          className={connection.status === "connecting" ? "pulse-dot" : ""}
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            height: 28,
-            padding: "0 10px",
-            borderRadius: 5,
-            border: "1px solid var(--border)",
-            background: "var(--surf-1)",
-            fontSize: 12,
-            cursor: "default",
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: bench || demo ? "var(--band-fast)" : connDot,
           }}
-          title="Public benchmark tenant — read-only"
-        >
-          <span
-            style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--band-fast)" }}
-          />
-          <span className="mono" style={{ color: "var(--text-1)" }}>
-            env:bench
-          </span>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={openConnect}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            height: 28,
-            padding: "0 10px",
-            borderRadius: 5,
-            border: "1px solid var(--border)",
-            background: "var(--surf-1)",
-            fontSize: 12,
-          }}
-          title={
-            demo
-              ? "Demo mode — connect a real receiver"
-              : connection.status === "connected"
-              ? "Connected"
-              : "Configure endpoint"
-          }
-        >
-          <span
-            className={connection.status === "connecting" ? "pulse-dot" : ""}
-            style={{ width: 6, height: 6, borderRadius: "50%", background: connDot }}
-          />
-          <span className="mono" style={{ color: "var(--text-1)" }}>
-            {demo ? "env:demo" : connection.status === "connected" ? "env:live" : "env:setup"}
-          </span>
-          <Icon.ArrowDown />
-        </button>
-      )}
+        />
+        <span className="mono" style={{ color: "var(--text-1)" }}>
+          {bench
+            ? "env:bench"
+            : demo
+            ? "env:demo"
+            : connection.status === "connected"
+            ? "env:live"
+            : "env:setup"}
+        </span>
+        <Icon.ArrowDown />
+      </button>
 
       <div
         style={{
@@ -258,7 +246,7 @@ export function TopBar({
         {theme === "dark" ? <Icon.Sun /> : <Icon.Moon />}
       </button>
 
-      {!bench && (connection.status === "connected" || demo) && (
+      {!bench && !demo && connection.status === "connected" && (
         <button
           type="button"
           onClick={disconnect}
@@ -273,7 +261,7 @@ export function TopBar({
             background: "var(--surf-1)",
             color: "var(--text-2)",
           }}
-          title={demo ? "Exit demo mode" : "Disconnect"}
+          title="Disconnect"
         >
           <Icon.LogOut />
         </button>

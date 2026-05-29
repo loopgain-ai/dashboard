@@ -12,7 +12,7 @@ interface Props {
 const DEFAULT_ENDPOINT = "https://telemetry.loopgain.ai";
 
 export function ConnectDialog({ open, onClose }: Props) {
-  const { config, connect, demo, setDemo } = useAuth();
+  const { config, connect } = useAuth();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [endpoint, setEndpoint] = useState(config?.endpoint ?? DEFAULT_ENDPOINT);
   const [token, setToken] = useState(config?.token ?? "");
@@ -59,7 +59,10 @@ export function ConnectDialog({ open, onClose }: Props) {
     setBusy(true);
     try {
       await connect({ endpoint: ep, token: tk });
-      if (demo) setDemo(false);
+      // If the user was viewing /benchmark or /demo, switching to their
+      // own tenant means navigating away from the public route; the
+      // connect handler stores the config and the user can navigate to /
+      // (or refresh) to see their own data.
       onClose();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -67,11 +70,6 @@ export function ConnectDialog({ open, onClose }: Props) {
     } finally {
       setBusy(false);
     }
-  }
-
-  function tryDemo(): void {
-    setDemo(true);
-    onClose();
   }
 
   return (
@@ -148,27 +146,22 @@ export function ConnectDialog({ open, onClose }: Props) {
           </div>
         )}
 
-        <div style={{ display: "flex", gap: 8, justifyContent: "space-between", marginTop: 4 }}>
-          <button type="button" className="chip" onClick={tryDemo}>
-            Use demo data
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
+          <button type="button" className="chip" onClick={onClose}>
+            Cancel
           </button>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="chip" onClick={onClose}>
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="chip on"
-              disabled={busy}
-              style={{
-                background: busy ? "var(--surf-3)" : "var(--accent)",
-                color: busy ? "var(--text-2)" : "#06080d",
-                border: "1px solid var(--accent)",
-              }}
-            >
-              {busy ? "Connecting…" : "Connect"}
-            </button>
-          </div>
+          <button
+            type="submit"
+            className="chip on"
+            disabled={busy}
+            style={{
+              background: busy ? "var(--surf-3)" : "var(--accent)",
+              color: busy ? "var(--text-2)" : "#06080d",
+              border: "1px solid var(--accent)",
+            }}
+          >
+            {busy ? "Connecting…" : "Connect"}
+          </button>
         </div>
       </form>
     </dialog>
