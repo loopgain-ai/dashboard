@@ -439,6 +439,16 @@
   .install-steps { grid-template-columns: 1fr; gap: 16px; }
 }
 
+/* ── Demo controls: two knob columns side-by-side, stacked on mobile ── */
+.demo-controls-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1.2fr;
+  gap: 18px;
+}
+@media (max-width: 760px) {
+  .demo-controls-grid { grid-template-columns: 1fr; gap: 20px; }
+}
+
 /* ── Settings alert rules row ──────────────────────────────────────── */
 .rule-row {
   display: grid;
@@ -464,6 +474,25 @@
 }
 @media (max-width: 760px) {
   .top-range-pill { padding: 0 6px !important; font-size: 10.5px !important; }
+}
+/* On phones, drop the time-range bar + density toggle entirely — the
+ *  dashboard's default time range (30d) is what the demo and bench
+ *  visitors care about; advanced viewers can use ⌘K or rotate to
+ *  landscape. The env pill, palette, theme toggle, and Connect path
+ *  all stay reachable. */
+@media (max-width: 600px) {
+  .top-range-wrap { display: none !important; }
+  .top-density-wrap { display: none !important; }
+}
+
+/* ── Demo banner: compact wording on mobile (the methodology modal
+ *  has the full disclosure) ─────────────────────────────────────── */
+@media (max-width: 760px) {
+  .demo-banner-long { display: none; }
+}
+.demo-banner-short { display: none; }
+@media (max-width: 760px) {
+  .demo-banner-short { display: inline; }
 }
 
 /* ── Brand lockup (theme-aware) ─────────────────────────────────────── */

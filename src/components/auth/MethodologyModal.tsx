@@ -164,6 +164,24 @@ export function MethodologyModal({ open, onClose }: Props) {
               receipts as-is and project to realistic production cost
               here.
             </li>
+            <li>
+              <strong>
+                <code style={{ fontFamily: "var(--mono)" }}>max_iter=20</code>{" "}
+                is the fixed-cap baseline used in the savings math.
+              </strong>{" "}
+              The Iterations · 30d card shows{" "}
+              <span className="mono" style={{ color: "var(--text-1)" }}>
+                used / (events × 20)
+              </span>{" "}
+              as a counterfactual "what you'd have spent if every loop ran
+              the full cap with no LoopGain rolling them back early." 20 is
+              the bench protocol's max_iter setting, hardcoded here for the
+              public demo. A real customer would set this from their tenant
+              config; if your production cap is meaningfully lower (e.g.
+              5–10), the headline reduction % will be smaller than what's
+              shown here. This is the assumption most worth interrogating
+              when comparing the demo to your reality.
+            </li>
           </ul>
         </Section>
 

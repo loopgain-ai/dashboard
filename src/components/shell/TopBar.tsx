@@ -109,6 +109,7 @@ export function TopBar({
       </button>
 
       <div
+        className="top-range-wrap"
         style={{
           display: "flex",
           alignItems: "center",
@@ -197,6 +198,7 @@ export function TopBar({
       <div style={{ flex: 1, minWidth: 0 }} />
 
       <div
+        className="top-density-wrap"
         style={{
           display: "flex",
           border: "1px solid var(--border)",

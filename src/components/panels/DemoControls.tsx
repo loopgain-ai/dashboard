@@ -131,13 +131,7 @@ export function DemoControls({ onOpenMethodology }: Props) {
         </button>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1.4fr 1.2fr",
-          gap: 18,
-        }}
-      >
+      <div className="demo-controls-grid">
         {/* ── Loop events / month ─────────────────────────────────── */}
         <div>
           <div
@@ -158,7 +152,14 @@ export function DemoControls({ onOpenMethodology }: Props) {
               {fmtEvents(params.eventsPerMonth)}
             </span>
           </div>
-          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 6,
+              marginBottom: 8,
+              flexWrap: "wrap",
+            }}
+          >
             {FLEET_PRESETS.map((p) => (
               <Chip
                 key={p.id}
@@ -230,6 +231,7 @@ export function DemoControls({ onOpenMethodology }: Props) {
               gap: 8,
               fontSize: 11,
               color: "var(--text-3)",
+              flexWrap: "wrap",
             }}
           >
             <span>override</span>
@@ -258,7 +260,12 @@ export function DemoControls({ onOpenMethodology }: Props) {
             />
             <span
               className="mono"
-              style={{ fontSize: 10.5, color: "var(--text-3)" }}
+              style={{
+                fontSize: 10.5,
+                color: "var(--text-3)",
+                flex: "1 1 200px",
+                minWidth: 0,
+              }}
             >
               {modelPreset
                 ? `(${modelPreset.label} ~${fmtInt(modelPreset.tokensInput)} in + ${fmtInt(modelPreset.tokensOutput)} out · ${modelPreset.notes})`

@@ -393,7 +393,7 @@ function DemoBanner({
     >
       <div style={{ flex: "1 1 320px", minWidth: 0 }}>
         <strong style={{ fontWeight: 600 }}>Production-scale projection</strong>{" "}
-        <span style={{ color: "var(--text-2)" }}>
+        <span className="demo-banner-long" style={{ color: "var(--text-2)" }}>
           — bench dynamics × your scale &amp; cost assumptions. The
           underlying bench (2,000 paired Haiku-4.5 runs across 5
           workload classes — codegen, debate, planner, RAG, adversarial
@@ -406,6 +406,31 @@ function DemoBanner({
             /benchmark
           </a>
           .{" "}
+          <button
+            type="button"
+            onClick={onOpenMethodology}
+            style={{
+              background: "transparent",
+              color: "var(--accent)",
+              textDecoration: "underline",
+              fontSize: 12.5,
+              padding: 0,
+              cursor: "pointer",
+            }}
+          >
+            ⓘ methodology
+          </button>
+        </span>
+        <span className="demo-banner-short" style={{ color: "var(--text-2)" }}>
+          {" "}
+          —{" "}
+          <a
+            href="/benchmark"
+            style={{ color: "var(--accent)", textDecoration: "underline" }}
+          >
+            /benchmark
+          </a>
+          {" · "}
           <button
             type="button"
             onClick={onOpenMethodology}

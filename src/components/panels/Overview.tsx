@@ -544,7 +544,7 @@ function OverviewBody({
               {
                 label: "Iterations · 30d",
                 value: `${fmtCompact(totals.total_iterations)} / ${fmtCompact(cap)}`,
-                sub: `${reductionPct.toFixed(1)}% reduction · ${fmtCompact(totals.event_count)} runs`,
+                sub: `${reductionPct.toFixed(1)}% reduction vs max_iter=${FIXED_CAP_BASELINE} cap · ${fmtCompact(totals.event_count)} runs`,
               },
               {
                 label: "Convergence rate · 30d",
