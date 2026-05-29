@@ -3,7 +3,7 @@
 import { useMemo, type ReactNode } from "react";
 import { useEventDetail, useEvents, useStats } from "../../lib/data-hooks";
 import { bandFromEvent } from "../../lib/bands";
-import { fmtRel, fmtTime, fmtUSD, fmtInt } from "../../lib/format";
+import { fmtRel, fmtTime, fmtUSD, fmtInt, fmtCompact } from "../../lib/format";
 import { median, percentile } from "../../lib/stats";
 // Hardcoded fixed-cap baseline used in the "Iterations · 30d" tile. Matches
 // `max_iter=20` from the bench protocol; for paying-customer fleet view this
@@ -326,7 +326,7 @@ function OverviewBody({
               <OutcomeDistGauge
                 valueLabel="% CONVERGED"
                 value={convergenceRate}
-                valueSub={`${fmtInt(convCount)} of ${fmtInt(totalEvents)} runs`}
+                valueSub={`${fmtCompact(convCount)} of ${fmtCompact(totalEvents)} runs`}
                 slices={visibleCells.map((cell) => ({
                   label: cell.short,
                   count: cell.count,
@@ -411,8 +411,8 @@ function OverviewBody({
               {fmtUSD(savedDollars, { cents: hasActualSavings })}
             </div>
             <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-2)" }}>
-              {fmtInt(totals.total_savings)} iterations saved · {fmtInt(totals.rollbacks)} rollbacks
-              executed
+              {fmtCompact(totals.total_savings)} iterations saved ·{" "}
+              {fmtCompact(totals.rollbacks)} rollbacks executed
             </div>
           </div>
 
@@ -543,13 +543,13 @@ function OverviewBody({
             return [
               {
                 label: "Iterations · 30d",
-                value: `${fmtInt(totals.total_iterations)} / ${fmtInt(cap)}`,
-                sub: `${reductionPct.toFixed(1)}% reduction · ${fmtInt(totals.event_count)} runs`,
+                value: `${fmtCompact(totals.total_iterations)} / ${fmtCompact(cap)}`,
+                sub: `${reductionPct.toFixed(1)}% reduction · ${fmtCompact(totals.event_count)} runs`,
               },
               {
                 label: "Convergence rate · 30d",
                 value: `${convRatePct.toFixed(1)}%`,
-                sub: `${fmtInt(convCount)} of ${fmtInt(totals.event_count)} runs`,
+                sub: `${fmtCompact(convCount)} of ${fmtCompact(totals.event_count)} runs`,
               },
               {
                 label: "Avg iters per run · 30d",
@@ -558,7 +558,7 @@ function OverviewBody({
               },
               {
                 label: "Rollbacks · 30d",
-                value: fmtInt(totals.rollbacks),
+                value: fmtCompact(totals.rollbacks),
                 sub:
                   totals.rollbacks > 0
                     ? `one every ${rollbackEvery.toFixed(1)} runs · best-so-far preserved`

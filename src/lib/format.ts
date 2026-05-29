@@ -11,6 +11,19 @@ export function fmtInt(v: number): string {
   return v.toLocaleString();
 }
 
+/** Compact integer formatter mirroring fmtUSD's k/M/B scaling. Use for
+ *  unitless counts on prominent KPIs where a 9-digit comma-separated
+ *  literal becomes unreadable at enterprise demo scale (e.g. 30M loop
+ *  events/month). Sub-1000 values stay literal; thousands → "12.3k";
+ *  millions → "1.4M"; billions → "2.5B". */
+export function fmtCompact(v: number): string {
+  const abs = Math.abs(v);
+  if (abs >= 1_000_000_000) return (v / 1_000_000_000).toFixed(1) + "B";
+  if (abs >= 1_000_000) return (v / 1_000_000).toFixed(1) + "M";
+  if (abs >= 1_000) return (v / 1_000).toFixed(1) + "k";
+  return v.toLocaleString();
+}
+
 export function fmtPct(v: number, digits = 1): string {
   return (v * 100).toFixed(digits) + "%";
 }
