@@ -105,10 +105,13 @@ function AppInner() {
     if (!isAuthed && !bench) setConnectOpen(true);
   }, [isAuthed, bench]);
 
-  // In bench mode, "settings" and "empty" routes are inaccessible. If a
-  // route state survives via hot-reload, redirect to overview.
+  // In bench mode, "settings" is inaccessible (no tenant config to
+  // manage). The "empty" route IS reachable in bench mode now — it's
+  // the install-instructions surface that the BenchBanner's CTA
+  // routes to. If a stale settings route survives via hot-reload,
+  // redirect to overview.
   useEffect(() => {
-    if (bench && (route === "settings" || route === "empty")) {
+    if (bench && route === "settings") {
       setRoute("overview");
     }
   }, [bench, route]);
@@ -248,7 +251,7 @@ function AppInner() {
         bench={bench}
       />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        {bench && <BenchBanner />}
+        {bench && <BenchBanner onOpenInstall={() => setRoute("empty")} />}
         {demo && (
           <DemoBanner
             onOpenMethodology={() => setMethodologyOpen(true)}
@@ -512,7 +515,7 @@ function DemoBanner({
  *  what the viewer is looking at + funnels to sign-up. Dismissible — the
  *  ✕ button persists to localStorage so a returning visitor isn't nagged.
  *  Sits above TopBar so it's the first thing on the page. */
-function BenchBanner() {
+function BenchBanner({ onOpenInstall }: { onOpenInstall: () => void }) {
   const [dismissed, setDismissed] = useState<boolean>(() => {
     try {
       return localStorage.getItem(BENCH_BANNER_DISMISSED_KEY) === "1";
@@ -564,10 +567,9 @@ function BenchBanner() {
         </span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>
-        <a
-          href="https://loopgain.ai"
-          target="_blank"
-          rel="noopener"
+        <button
+          type="button"
+          onClick={onOpenInstall}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -580,10 +582,13 @@ function BenchBanner() {
             fontWeight: 500,
             textDecoration: "none",
             whiteSpace: "nowrap",
+            fontSize: 12,
+            cursor: "pointer",
+            border: "none",
           }}
         >
           Install free → instrument your own loops
-        </a>
+        </button>
         <button
           type="button"
           onClick={dismiss}
