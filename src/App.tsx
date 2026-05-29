@@ -11,6 +11,7 @@ import { ConnectDialog } from "./components/auth/ConnectDialog";
 import { MethodologyModal } from "./components/auth/MethodologyModal";
 import { DemoControls } from "./components/panels/DemoControls";
 import {
+  BottomNav,
   CommandPalette,
   FilterBar,
   NAV,
@@ -277,7 +278,7 @@ function AppInner() {
         <footer
           className="app-footer"
           style={{
-            height: 26,
+            minHeight: 26,
             borderTop: "1px solid var(--border)",
             background: "var(--bg-1)",
             display: "flex",
@@ -287,10 +288,11 @@ function AppInner() {
             fontSize: 11,
             color: "var(--text-3)",
             flex: "0 0 auto",
+            flexWrap: "wrap",
           }}
         >
-          <span className="mono">v0.3.0</span>
-          <span>·</span>
+          <span className="mono footer-secondary">v0.3.0</span>
+          <span className="footer-secondary">·</span>
           <span>
             ingestion{" "}
             <span
@@ -313,7 +315,7 @@ function AppInner() {
             </span>
           )}
           <span style={{ flex: 1 }} />
-          <span>
+          <span className="footer-secondary">
             <a
               href="https://loopgain.ai/privacy"
               target="_blank"
@@ -337,6 +339,7 @@ function AppInner() {
             <span className="kbd">K</span> palette
           </span>
         </footer>
+        {isAuthed && <BottomNav route={route} setRoute={setRoute} bench={bench} demo={demo} />}
       </div>
 
       <CommandPalette

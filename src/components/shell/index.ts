@@ -1,3 +1,4 @@
+export { BottomNav } from "./BottomNav";
 export { CommandPalette } from "./CommandPalette";
 export { FilterBar } from "./FilterBar";
 export { Sidebar } from "./Sidebar";

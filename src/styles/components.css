@@ -485,6 +485,57 @@
   .top-density-wrap { display: none !important; }
 }
 
+/* ── Mobile: swap left Sidebar for bottom nav + slim footer ──────────
+ *  At ≤ 600px the left rail's 56px steals real estate the content
+ *  panels actually need. Hide it; render <BottomNav> instead so primary
+ *  nav stays one tap away in the iOS/Android convention. main gets a
+ *  matching bottom padding so the last KPI doesn't sit under the bar. */
+.app-bottom-nav { display: none; }
+@media (max-width: 600px) {
+  .app-sidebar { display: none !important; }
+  .app-bottom-nav {
+    display: block;
+    flex: 0 0 auto;
+    border-top: 1px solid var(--border);
+    background: var(--bg-1);
+    /* honour the iOS safe-area at the bottom of the viewport */
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  .app-bottom-nav-scroll {
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .app-bottom-nav-scroll::-webkit-scrollbar { display: none; }
+  .app-bottom-nav-item {
+    flex: 0 0 auto;
+    min-width: 64px;
+    height: 56px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 0 8px;
+    border: none;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    line-height: 1;
+  }
+  .app-bottom-nav-label {
+    font-size: 9.5px;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+  }
+  /* Slim the footer: drop the keyboard-shortcut hints, privacy/terms.
+   *  Keep ingestion status + customer id so the visitor still sees what
+   *  tenant they're looking at. */
+  .app-footer { font-size: 10px !important; padding: 0 10px !important; }
+  .app-footer .footer-secondary { display: none !important; }
+}
+
 /* ── Demo banner: compact wording on mobile (the methodology modal
  *  has the full disclosure) ─────────────────────────────────────── */
 @media (max-width: 760px) {
