@@ -37,19 +37,15 @@ import { EmptyState } from "./components/panels/EmptyState";
 import { useAuth } from "./lib/api";
 
 const THEME_KEY = "loopgain-dashboard-theme";
-const DENSITY_KEY = "loopgain-dashboard-density";
 const COST_KEY = "loopgain-dashboard-cost-per-iter";
+const BENCH_BANNER_DISMISSED_KEY = "loopgain-bench-banner-dismissed";
+const DEMO_BANNER_DISMISSED_KEY = "loopgain-demo-banner-dismissed";
 
 type Theme = "dark" | "light";
-type Density = "comfortable" | "compact";
 
 function loadTheme(): Theme {
   const v = localStorage.getItem(THEME_KEY);
   return v === "light" || v === "dark" ? v : "dark";
-}
-function loadDensity(): Density {
-  const v = localStorage.getItem(DENSITY_KEY);
-  return v === "comfortable" || v === "compact" ? v : "compact";
 }
 function loadCost(): number {
   const v = Number(localStorage.getItem(COST_KEY));
@@ -84,8 +80,10 @@ function AppInner() {
     () => typeof window !== "undefined" && window.innerWidth < 720,
   );
   const [theme, setTheme] = useState<Theme>(() => loadTheme());
-  const [density, setDensity] = useState<Density>(() => loadDensity());
-  const [timeRange, setTimeRange] = useState<TimeRange>("30d");
+  // timeRange is pinned to "30d" — see TopBar.tsx note on why the
+  // selector was removed. Kept as a constant so panel prop signatures
+  // don't change.
+  const timeRange: TimeRange = "30d";
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
   const [methodologyOpen, setMethodologyOpen] = useState(false);
@@ -101,11 +99,6 @@ function AppInner() {
     localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
 
-  useEffect(() => {
-    document.documentElement.dataset.density = density;
-    localStorage.setItem(DENSITY_KEY, density);
-  }, [density]);
-
   // Open the connect dialog automatically if we land with no config & not in
   // demo/bench. Bench-mode is read-only and never prompts for a token.
   useEffect(() => {
@@ -120,7 +113,10 @@ function AppInner() {
     }
   }, [bench, route]);
 
-  const pollMs = timeRange === "live" ? 15_000 : undefined;
+  // pollMs / sinceHours used to be derived from the time-range selector;
+  // with that gone they're always undefined (= 30d default from receiver,
+  // no polling). Kept as locals so panel prop shapes don't change.
+  const pollMs = undefined;
   const sinceHours = timeRangeHours(timeRange) ?? undefined;
 
   // ── Workloads for palette ───────────────────────────────────────────
@@ -260,12 +256,8 @@ function AppInner() {
           />
         )}
         <TopBar
-          timeRange={timeRange}
-          setTimeRange={setTimeRange}
           theme={theme}
           setTheme={setTheme}
-          density={density}
-          setDensity={setDensity}
           openPalette={() => setPaletteOpen(true)}
           openConnect={() => setConnectOpen(true)}
           bench={bench}
@@ -377,6 +369,22 @@ function DemoBanner({
   onOpenMethodology: () => void;
   onOpenInstall: () => void;
 }) {
+  const [dismissed, setDismissed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(DEMO_BANNER_DISMISSED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  if (dismissed) return null;
+  function dismiss(): void {
+    try {
+      localStorage.setItem(DEMO_BANNER_DISMISSED_KEY, "1");
+    } catch {
+      /* noop */
+    }
+    setDismissed(true);
+  }
   return (
     <div
       style={{
@@ -450,36 +458,77 @@ function DemoBanner({
           </button>
         </span>
       </div>
-      <button
-        type="button"
-        onClick={onOpenInstall}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          height: 28,
-          padding: "0 14px",
-          borderRadius: 5,
-          background: "var(--accent)",
-          color: "var(--bg-0)",
-          fontWeight: 500,
-          textDecoration: "none",
-          whiteSpace: "nowrap",
-          fontSize: 12,
-          cursor: "pointer",
-          border: "none",
-        }}
-      >
-        Install free → instrument your own loops
-      </button>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>
+        <button
+          type="button"
+          onClick={onOpenInstall}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            height: 28,
+            padding: "0 14px",
+            borderRadius: 5,
+            background: "var(--accent)",
+            color: "var(--bg-0)",
+            fontWeight: 500,
+            textDecoration: "none",
+            whiteSpace: "nowrap",
+            fontSize: 12,
+            cursor: "pointer",
+            border: "none",
+          }}
+        >
+          Install free → instrument your own loops
+        </button>
+        <button
+          type="button"
+          onClick={dismiss}
+          aria-label="Dismiss banner"
+          title="Dismiss"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 24,
+            height: 24,
+            borderRadius: 4,
+            background: "transparent",
+            color: "var(--text-3)",
+            border: "1px solid var(--border)",
+            fontSize: 14,
+            lineHeight: 1,
+            cursor: "pointer",
+          }}
+        >
+          ✕
+        </button>
+      </div>
     </div>
   );
 }
 
 /** Sticky banner shown across the top of every panel in bench mode. Names
- *  what the viewer is looking at + funnels to sign-up. Sits above TopBar so
- *  it's the first thing on the page. */
+ *  what the viewer is looking at + funnels to sign-up. Dismissible — the
+ *  ✕ button persists to localStorage so a returning visitor isn't nagged.
+ *  Sits above TopBar so it's the first thing on the page. */
 function BenchBanner() {
+  const [dismissed, setDismissed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(BENCH_BANNER_DISMISSED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  if (dismissed) return null;
+  function dismiss(): void {
+    try {
+      localStorage.setItem(BENCH_BANNER_DISMISSED_KEY, "1");
+    } catch {
+      /* noop */
+    }
+    setDismissed(true);
+  }
   return (
     <div
       style={{
@@ -514,27 +563,50 @@ function BenchBanner() {
           . Read-only — click env:bench to connect your own tenant, or see <a href="/demo" style={{ color: "var(--accent)", textDecoration: "underline" }}>/demo</a> for a production-scale projection.
         </span>
       </div>
-      <a
-        href="https://loopgain.ai"
-        target="_blank"
-        rel="noopener"
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          height: 28,
-          padding: "0 14px",
-          borderRadius: 5,
-          background: "var(--accent)",
-          color: "var(--bg-0)",
-          fontWeight: 500,
-          textDecoration: "none",
-          whiteSpace: "nowrap",
-          flex: "0 0 auto",
-        }}
-      >
-        Install free → instrument your own loops
-      </a>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>
+        <a
+          href="https://loopgain.ai"
+          target="_blank"
+          rel="noopener"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            height: 28,
+            padding: "0 14px",
+            borderRadius: 5,
+            background: "var(--accent)",
+            color: "var(--bg-0)",
+            fontWeight: 500,
+            textDecoration: "none",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Install free → instrument your own loops
+        </a>
+        <button
+          type="button"
+          onClick={dismiss}
+          aria-label="Dismiss banner"
+          title="Dismiss"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 24,
+            height: 24,
+            borderRadius: 4,
+            background: "transparent",
+            color: "var(--text-3)",
+            border: "1px solid var(--border)",
+            fontSize: 14,
+            lineHeight: 1,
+            cursor: "pointer",
+          }}
+        >
+          ✕
+        </button>
+      </div>
     </div>
   );
 }

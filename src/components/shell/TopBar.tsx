@@ -1,27 +1,24 @@
 import { Icon } from "../primitives";
 import { useAuth } from "../../lib/api";
 
-export type TimeRange = "live" | "1h" | "24h" | "7d" | "30d";
-
-export const TIME_RANGES: ReadonlyArray<TimeRange> = ["live", "1h", "24h", "7d", "30d"];
-
-export function timeRangeHours(r: TimeRange): number | null {
-  switch (r) {
-    case "live": return 1;
-    case "1h": return 1;
-    case "24h": return 24;
-    case "7d": return 24 * 7;
-    case "30d": return null; // null = use receiver default (30d)
-  }
+// TimeRange + density toggle were removed from TopBar 2026-05-29 (the
+// time-range buttons didn't actually drive /stats which is hard-pinned to
+// 30d server-side, so changing them appeared broken; the density toggle
+// added clutter without serving a buyer goal). The TimeRange type stays
+// exported as a constant for callers that still want to pass it through
+// to panels — those panels treat any value as a no-op now.
+export type TimeRange = "30d";
+export const TIME_RANGES: ReadonlyArray<TimeRange> = ["30d"];
+export function timeRangeHours(_r: TimeRange): number | null {
+  // null = use receiver default (30d). All other TimeRange values are
+  // gone; this signature is kept for backward source compatibility with
+  // panels that still import + pass it through.
+  return null;
 }
 
 interface Props {
-  timeRange: TimeRange;
-  setTimeRange: (r: TimeRange) => void;
   theme: "dark" | "light";
   setTheme: (fn: (t: "dark" | "light") => "dark" | "light") => void;
-  density: "comfortable" | "compact";
-  setDensity: (d: "comfortable" | "compact") => void;
   openPalette: () => void;
   openConnect: () => void;
   /** Bench-mode disables the connect button + disconnect button (no
@@ -30,12 +27,8 @@ interface Props {
 }
 
 export function TopBar({
-  timeRange,
-  setTimeRange,
   theme,
   setTheme,
-  density,
-  setDensity,
   openPalette,
   openConnect,
   bench,
@@ -108,54 +101,6 @@ export function TopBar({
         <Icon.ArrowDown />
       </button>
 
-      <div
-        className="top-range-wrap"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          border: "1px solid var(--border)",
-          borderRadius: 5,
-          overflow: "hidden",
-          background: "var(--surf-1)",
-        }}
-      >
-        {TIME_RANGES.map((r, i) => (
-          <button
-            key={r}
-            type="button"
-            className="top-range-pill"
-            onClick={() => setTimeRange(r)}
-            style={{
-              height: 26,
-              padding: "0 10px",
-              fontSize: 11.5,
-              color: timeRange === r ? "var(--text-1)" : "var(--text-3)",
-              background: timeRange === r ? "var(--surf-3)" : "transparent",
-              borderLeft: i === 0 ? "none" : "1px solid var(--border)",
-              fontFamily: "var(--mono)",
-            }}
-            title={r === "live" ? "Auto-refresh every 15s" : `Last ${r}`}
-          >
-            {r === "live" ? (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                <span
-                  className={timeRange === "live" ? "pulse-dot" : ""}
-                  style={{
-                    width: 5,
-                    height: 5,
-                    borderRadius: "50%",
-                    background: timeRange === "live" ? "var(--band-fast)" : "var(--text-3)",
-                  }}
-                />
-                LIVE
-              </span>
-            ) : (
-              r
-            )}
-          </button>
-        ))}
-      </div>
-
       <button
         type="button"
         onClick={openPalette}
@@ -196,38 +141,6 @@ export function TopBar({
       </button>
 
       <div style={{ flex: 1, minWidth: 0 }} />
-
-      <div
-        className="top-density-wrap"
-        style={{
-          display: "flex",
-          border: "1px solid var(--border)",
-          borderRadius: 5,
-          overflow: "hidden",
-        }}
-      >
-        {[
-          { id: "comfortable" as const, label: "cozy" },
-          { id: "compact" as const, label: "dense" },
-        ].map((d) => (
-          <button
-            key={d.id}
-            type="button"
-            onClick={() => setDensity(d.id)}
-            style={{
-              height: 26,
-              padding: "0 10px",
-              fontSize: 11,
-              color: density === d.id ? "var(--text-1)" : "var(--text-3)",
-              background: density === d.id ? "var(--surf-3)" : "transparent",
-              fontFamily: "var(--mono)",
-            }}
-            title={d.id}
-          >
-            {d.label}
-          </button>
-        ))}
-      </div>
 
       <button
         type="button"
