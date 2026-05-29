@@ -4,17 +4,19 @@ import { App } from "./App";
 import { loadConfig } from "./lib/api";
 import "./styles/index.css";
 
-// Public landing rule (2026-05-28): visitors hitting the root path with
-// no stored customer config are sent to /demo — the canonical public
-// surface is the parameterized projection, with /benchmark one click
-// away for visitors who want the underlying receipts. Customers with a
-// configured endpoint still land on / and see their own tenant.
-if (
-  typeof window !== "undefined" &&
-  window.location.pathname === "/" &&
-  !loadConfig()
-) {
-  window.location.replace("/demo");
+// Public landing rule (2026-05-28): a visitor with no stored customer
+// config lands on /demo (the canonical public surface — parameterized
+// projection) unless they specifically requested /benchmark. This
+// catches both the root path "/" and any other deep link the visitor
+// might hit without a config (e.g. /empty, /settings, bookmarks).
+// Customers with a configured endpoint still land on / and see their
+// own tenant.
+if (typeof window !== "undefined") {
+  const p = window.location.pathname;
+  const isPublicRoute = p.startsWith("/demo") || p.startsWith("/benchmark");
+  if (!isPublicRoute && !loadConfig()) {
+    window.location.replace("/demo");
+  }
 }
 
 const root = document.getElementById("root");

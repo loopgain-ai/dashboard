@@ -381,8 +381,9 @@ function DemoBanner({ onOpenMethodology }: { onOpenMethodology: () => void }) {
         <strong style={{ fontWeight: 600 }}>Production-scale projection</strong>{" "}
         <span style={{ color: "var(--text-2)" }}>
           — bench dynamics × your scale &amp; cost assumptions. The
-          underlying bench (2,000 Haiku-4.5 codegen runs, fully measured)
-          is at{" "}
+          underlying bench (2,000 paired Haiku-4.5 runs across 5
+          workload classes — codegen, debate, planner, RAG, adversarial
+          — and 7 frameworks, fully measured) is at{" "}
           <a
             href="/benchmark"
             style={{ color: "var(--accent)", textDecoration: "underline" }}

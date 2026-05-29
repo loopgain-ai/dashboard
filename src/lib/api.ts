@@ -621,6 +621,19 @@ export function useAuthProvider(): AuthCtx {
     clearConfig();
     setConfig(null);
     setConnection({ status: "disconnected" });
+    // Per the "no token defaults to demo" rule: disconnecting on an
+    // authed dashboard sends the user to /demo (the public projection)
+    // rather than leaving them on / with the install snippet. Matches
+    // the initial-load redirect in main.tsx so the rule is consistent
+    // across both code paths. Skip the redirect if we're already on a
+    // public route (bench/demo) — those don't reach this handler via
+    // the disconnect button anyway, but defense-in-depth.
+    if (typeof window !== "undefined") {
+      const p = window.location.pathname;
+      if (!p.startsWith("/demo") && !p.startsWith("/benchmark")) {
+        window.location.replace("/demo");
+      }
+    }
   }, []);
 
   const ping = useCallback(() => {

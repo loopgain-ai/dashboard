@@ -1,7 +1,8 @@
-// Empty state — shown when a customer hits the explicit "empty" route
-// (e.g. after disconnecting). The Python integration snippet is the
-// empty state. Fresh public visitors are redirected to /demo at boot
-// (see main.tsx); they never reach this component.
+// Empty state — install instructions for someone who explicitly wants
+// them. Public visitors with no config are redirected to /demo at boot
+// and on disconnect (see main.tsx and useAuthProvider.disconnect); they
+// don't pass through here in the normal flow. Reachable via the explicit
+// `route === "empty"` case in App.tsx.
 
 import { useState } from "react";
 import { Chip, Icon, PanelHeader } from "../primitives";
@@ -10,37 +11,146 @@ interface Props {
   openConnect: () => void;
 }
 
-const PY_SNIPPET = `# Three lines — that's the whole integration surface for the OSS path.
+// Adapter framework IDs map to the snippet shown in the integration
+// card. Per loopgain-core/pyproject.toml (Apr 2026), the library ships
+// six framework adapters under `loopgain.integrations`, each lazily
+// loaded so installing `loopgain` doesn't pull in any framework.
+type Lang =
+  | "python"
+  | "langgraph"
+  | "crewai"
+  | "autogen"
+  | "langchain"
+  | "openai-agents"
+  | "claude-agent-sdk";
+
+const SNIPPETS: Record<Lang, { label: string; install: string; code: string }> = {
+  python: {
+    label: "Python (bare)",
+    install: "pip install loopgain",
+    code: `# The OSS integration surface — drive the loop yourself and call
+# LoopGain on each iteration. Works with any agent framework.
 from loopgain import LoopGain
 
-guard = LoopGain(target_error=0.1)
-while guard.should_continue():
+lg = LoopGain(target_error=0.1, max_iterations=20)
+while lg.should_continue():
     errors = verifier.verify(output)
-    guard.observe(errors)
+    lg.observe(errors)
     output = reviser.revise(output, errors)
 
-# Then (optional) opt into anonymized aggregates for the dashboard:
-guard.send_telemetry(
+# Optional — send anonymized aggregates to the hosted dashboard.
+lg.send_telemetry(
     endpoint="https://telemetry.loopgain.ai/v1/aggregate",
     token="lgk_...",
     workload_id="rag-rewrite-prod",
-)`;
+)`,
+  },
+  langgraph: {
+    label: "LangGraph",
+    install: "pip install 'loopgain[langgraph]'",
+    code: `from loopgain import LoopGain
+from loopgain.integrations import LangGraphAdapter
 
-const LG_SNIPPET = `from langgraph.graph import StateGraph
-from loopgain.adapters.langgraph import LangGraphGuard
+lg = LoopGain(target_error=0.1, max_iterations=20)
+adapter = LangGraphAdapter(
+    lg=lg,
+    error_fn=lambda update: len(update.get("verifier_errors") or []),
+)
+final_state = adapter.run(graph, input_state)
 
-graph = StateGraph(State).add_node("rewrite", rewrite_node)
-guarded = LangGraphGuard.wrap(graph, target_error=0.1)
-app = guarded.compile()`;
+# Optional telemetry; framework auto-stamped as "langgraph".
+lg.send_telemetry(
+    endpoint="https://telemetry.loopgain.ai/v1/aggregate",
+    token="lgk_...",
+    workload_id="rag-rewrite-prod",
+    framework=adapter.framework_name,
+)`,
+  },
+  crewai: {
+    label: "CrewAI",
+    install: "pip install 'loopgain[crewai]'",
+    code: `from loopgain import LoopGain
+from loopgain.integrations import CrewAIAdapter
+
+lg = LoopGain(target_error=0.1, max_iterations=20)
+adapter = CrewAIAdapter(
+    lg=lg,
+    error_fn=lambda step: step.errors_remaining,
+)
+result = adapter.run(crew, inputs)`,
+  },
+  autogen: {
+    label: "AutoGen v0.4+",
+    install: "pip install 'loopgain[autogen]'",
+    code: `from loopgain import LoopGain
+from loopgain.integrations import AutoGenAdapter
+
+lg = LoopGain(target_error=0.1, max_iterations=20)
+adapter = AutoGenAdapter(
+    lg=lg,
+    error_fn=lambda msg: count_open_issues(msg),
+)
+result = await adapter.run(team, task)`,
+  },
+  langchain: {
+    label: "LangChain",
+    install: "pip install 'loopgain[langchain]'",
+    code: `from loopgain import LoopGain
+from loopgain.integrations import LangChainAdapter
+
+lg = LoopGain(target_error=0.1, max_iterations=20)
+adapter = LangChainAdapter(
+    lg=lg,
+    error_fn=lambda step: len(step.intermediate_steps),
+)
+result = adapter.run(agent_executor, {"input": query})`,
+  },
+  "openai-agents": {
+    label: "OpenAI Agents SDK",
+    install: "pip install 'loopgain[openai-agents]'",
+    code: `from loopgain import LoopGain
+from loopgain.integrations import OpenAIAgentsAdapter
+
+lg = LoopGain(target_error=0.1, max_iterations=20)
+adapter = OpenAIAgentsAdapter(
+    lg=lg,
+    error_fn=lambda turn: count_tool_failures(turn),
+)
+result = await adapter.run(agent, input_items)`,
+  },
+  "claude-agent-sdk": {
+    label: "Claude Agent SDK",
+    install: "pip install 'loopgain[claude-agent-sdk]'",
+    code: `from loopgain import LoopGain
+from loopgain.integrations import ClaudeAgentSDKAdapter
+
+lg = LoopGain(target_error=0.1, max_iterations=20)
+adapter = ClaudeAgentSDKAdapter(
+    lg=lg,
+    error_fn=lambda msg: count_verifier_findings(msg),
+)
+result = await adapter.run(client, prompt)`,
+  },
+};
+
+const LANG_ORDER: Lang[] = [
+  "python",
+  "langgraph",
+  "crewai",
+  "autogen",
+  "langchain",
+  "openai-agents",
+  "claude-agent-sdk",
+];
 
 export function EmptyState({ openConnect }: Props) {
-  const [lang, setLang] = useState<"python" | "langgraph">("python");
+  const [lang, setLang] = useState<Lang>("python");
   const [copied, setCopied] = useState(false);
 
-  const snippet = lang === "python" ? PY_SNIPPET : LG_SNIPPET;
+  const snippet = SNIPPETS[lang];
 
   function copy(): void {
-    navigator.clipboard?.writeText(snippet).then(() => {
+    navigator.clipboard?.writeText(snippet.code).then(() => {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1400);
     });
@@ -50,12 +160,10 @@ export function EmptyState({ openConnect }: Props) {
     <div style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
       <PanelHeader
         eyebrow="Welcome to LoopGain"
-        title="No loops streaming yet"
+        title="Instrument your first loop"
         right={
           <div style={{ display: "flex", gap: 8 }}>
-            <Chip
-              onClick={() => window.location.assign("/demo")}
-            >
+            <Chip onClick={() => window.location.assign("/demo")}>
               View demo
             </Chip>
             <Chip
@@ -92,11 +200,16 @@ export function EmptyState({ openConnect }: Props) {
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 500, color: "var(--text-1)" }}>
-              Send your first loop in three lines.
+              Pick your framework. LoopGain ships adapters for the six most
+              common.
             </div>
             <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 4 }}>
-              Once a loop calls <span className="mono" style={{ color: "var(--text-1)" }}>guard.observe()</span>{" "}
-              and emits telemetry, it appears on the Health Map within a refresh interval.
+              Once a loop calls{" "}
+              <span className="mono" style={{ color: "var(--text-1)" }}>
+                lg.observe()
+              </span>{" "}
+              and emits telemetry, it appears on the Health Map within a
+              refresh interval.
             </div>
           </div>
         </div>
@@ -107,36 +220,35 @@ export function EmptyState({ openConnect }: Props) {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 8,
           }}
         >
           <div
             style={{
               display: "flex",
+              flexWrap: "wrap",
               border: "1px solid var(--border)",
               borderRadius: 6,
               overflow: "hidden",
             }}
           >
-            {(
-              [
-                { id: "python" as const, label: "Python" },
-                { id: "langgraph" as const, label: "LangGraph" },
-              ]
-            ).map((l) => (
+            {LANG_ORDER.map((id) => (
               <button
-                key={l.id}
+                key={id}
                 type="button"
-                onClick={() => setLang(l.id)}
+                onClick={() => setLang(id)}
                 style={{
                   height: 30,
-                  padding: "0 14px",
-                  fontSize: 12,
+                  padding: "0 12px",
+                  fontSize: 11.5,
                   fontFamily: "var(--mono)",
-                  color: lang === l.id ? "var(--text-1)" : "var(--text-3)",
-                  background: lang === l.id ? "var(--surf-3)" : "transparent",
+                  color: lang === id ? "var(--text-1)" : "var(--text-3)",
+                  background: lang === id ? "var(--surf-3)" : "transparent",
+                  borderRight: "1px solid var(--border)",
                 }}
               >
-                {l.label}
+                {SNIPPETS[id].label}
               </button>
             ))}
           </div>
@@ -161,7 +273,7 @@ export function EmptyState({ openConnect }: Props) {
             marginBottom: 0,
           }}
         >
-          {snippet}
+          {snippet.code}
         </pre>
 
         <div
@@ -180,19 +292,36 @@ export function EmptyState({ openConnect }: Props) {
               1 — Install
             </div>
             <div className="mono" style={{ color: "var(--text-1)" }}>
-              pip install loopgain
+              {snippet.install}
             </div>
           </div>
           <div>
             <div className="label" style={{ marginBottom: 6 }}>
-              2 — Provision a token
+              2 — Get a telemetry token
             </div>
             <div style={{ color: "var(--text-2)" }}>
-              Issued by your receiver admin via{" "}
+              Hosted: email{" "}
+              <a
+                href="mailto:hello@loopgain.ai"
+                style={{ color: "var(--accent)" }}
+              >
+                hello@loopgain.ai
+              </a>{" "}
+              while the public signup flow ships. Self-hosted: provision via
+              the{" "}
+              <a
+                href="https://github.com/loopgain-ai/telemetry-receiver"
+                target="_blank"
+                rel="noopener"
+                style={{ color: "var(--accent)" }}
+              >
+                telemetry-receiver
+              </a>
+              's{" "}
               <span className="mono" style={{ color: "var(--text-1)" }}>
-                npm run issue-token
-              </span>
-              .
+                wrangler dispatch
+              </span>{" "}
+              token-issue script.
             </div>
           </div>
           <div>
@@ -202,9 +331,10 @@ export function EmptyState({ openConnect }: Props) {
             <div style={{ color: "var(--text-2)" }}>
               Call{" "}
               <span className="mono" style={{ color: "var(--text-1)" }}>
-                guard.send_telemetry()
+                lg.send_telemetry()
               </span>{" "}
-              after each loop terminates.
+              after each loop terminates (or use the adapter's auto-stamped
+              path).
             </div>
           </div>
         </div>

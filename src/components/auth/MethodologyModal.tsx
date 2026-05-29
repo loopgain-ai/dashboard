@@ -90,8 +90,14 @@ export function MethodologyModal({ open, onClose }: Props) {
           >
             public benchmark tenant
           </a>{" "}
-          — 2,000 paired real-API runs of Claude Haiku 4.5 across 7 agent
-          frameworks and 11 codegen-style workload variants. Two
+          — 2,000 paired real-API runs of Claude Haiku 4.5 across{" "}
+          <strong>5 workload classes</strong> (codegen / debate /
+          multi-step planner / RAG retrieval refinement / adversarial),{" "}
+          <strong>7 agent frameworks</strong> (LangGraph, CrewAI,
+          AutoGen, LangChain, OpenAI Agents SDK, Claude Agent SDK, bare
+          Anthropic), and{" "}
+          <strong>5 loop types</strong> (refinement, verify_revise,
+          tool_use_retry, critique_revise, iterative_retrieval). Two
           parameters are yours to set:{" "}
           <strong>loop events / month</strong> (your scale) and{" "}
           <strong>$/iter</strong> (your model + token budget). The chart
@@ -105,17 +111,20 @@ export function MethodologyModal({ open, onClose }: Props) {
 
         <Section title="What this is not">
           Not a claim that production agent loops look exactly like the
-          bench. The bench is Haiku-on-codegen — among the{" "}
-          <em>hardest</em> regimes for convergence (codegen has the
-          cleanest verifier feedback, which our research shows is the
-          active ingredient for convergence; conversely, intrinsic
-          chain-of-thought loops without external feedback{" "}
-          <em>fail</em> at self-correction). Easy high-volume flows
-          (support deflection, extraction) would converge much more
-          cleanly than the 65/18/17 outcome split here; open-ended
-          multi-step tool use would diverge more. The projection is
-          credible <em>as a hard-workload case</em>, not as "the
-          production distribution."
+          bench. The bench is a <em>deliberate mix</em> of easy regimes
+          (codegen with deterministic verifiers — 400 events, 20% of
+          bench) and harder regimes (multi-step planner 400 / debate
+          critique-revise 400 / RAG retrieval refinement 200 /
+          adversarial-by-design 600). The aggregate 65/18/17
+          conv/osc/div split reflects that blend; a real production
+          tenant on a single high-volume easy flow (support deflection,
+          extraction) would converge much more cleanly, while a tenant
+          dominated by intrinsic chain-of-thought reasoning (which our
+          research shows <em>fails</em> at self-correction without
+          external feedback) would diverge more. The projection is
+          credible as a <em>multi-workload mid-difficulty case</em>, not
+          as "the production distribution" — your actual loop dynamics
+          will differ.
         </Section>
 
         <Section title="Default parameter defense">
@@ -145,10 +154,13 @@ export function MethodologyModal({ open, onClose }: Props) {
                 Bench's own implied $0.000625/iter is{" "}
                 <em>not</em> a price to fix.
               </strong>{" "}
-              That's the real measured cost of Haiku on lean codegen
-              prompts (a few hundred tokens/iter). Different workload
-              from production; we keep the bench's receipts as-is and
-              project to realistic production cost here.
+              That's the real measured cost of Haiku 4.5 on lean
+              bench prompts (a few hundred tokens/iter average across
+              the 5 workload classes). Production agents run 10–100×
+              more tokens/iter with rich tool definitions, retrieved
+              context, and conversation history; we keep the bench's
+              receipts as-is and project to realistic production cost
+              here.
             </li>
           </ul>
         </Section>
@@ -205,9 +217,10 @@ export function MethodologyModal({ open, onClose }: Props) {
           <a href="/benchmark" style={{ color: "var(--accent)" }}>
             /benchmark
           </a>
-          . That tenant shows the raw 2,000 Haiku codegen runs — every
-          number is measured, no projection or scaling. The /demo page
-          you're looking at is bench dynamics × your scale assumptions.
+          . That tenant shows the raw 2,000 paired Haiku-4.5 runs across
+          the 5 workload classes and 7 frameworks — every number is
+          measured, no projection or scaling. The /demo page you're
+          looking at is bench dynamics × your scale assumptions.
         </Section>
       </div>
 
