@@ -214,7 +214,12 @@ export function ConvergenceOverTime({
         />
       )}
       {events.map((e, i) => {
-        if (e.profile_median == null) return null;
+        // profile_median == 0 means TARGET_MET-at-iter-1 (no Aβ was
+        // measured) — the receiver reports these with literal 0 or
+        // null; both semantically mean "unmeasurable." Skip both,
+        // otherwise the chart paints a dense bottom band of false
+        // y=0 points and the rolling median bounces wildly.
+        if (e.profile_median == null || e.profile_median <= 0) return null;
         const band = bandFromProfileEvent(e);
         return (
           <circle

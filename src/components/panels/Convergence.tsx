@@ -156,12 +156,17 @@ function ConvergenceBody({
   yMax: number;
   showTrend: boolean;
 }) {
-  // Rolling median over time: bucket events by hour, take median of profile_median per bucket.
+  // Rolling median over time: bucket events by hour, take median of
+  // profile_median per bucket. profile_median == 0 means TARGET_MET-
+  // at-iter-1 (no Aβ to measure); treat it the same as null so the
+  // rolling line doesn't bounce between ~1.0 (oscillating runs) and 0
+  // (unmeasured runs) every hour. Mirrors the receiver's stats
+  // aggregate which excludes null profile_max for the same reason.
   const rolling = useMemo(() => {
     if (!showTrend || events.length === 0) return [];
     const buckets = new Map<number, number[]>();
     for (const e of events) {
-      if (e.profile_median == null) continue;
+      if (e.profile_median == null || e.profile_median <= 0) continue;
       const bucket = Math.floor(e.timestamp_hour / 3600) * 3600;
       const arr = buckets.get(bucket);
       if (arr) arr.push(e.profile_median);
@@ -177,7 +182,12 @@ function ConvergenceBody({
   }, [events, showTrend]);
 
   const fleetMedian = useMemo(
-    () => median(events.map((e) => e.profile_median)),
+    () =>
+      median(
+        events
+          .map((e) => e.profile_median)
+          .filter((v): v is number => typeof v === "number" && v > 0),
+      ),
     [events],
   );
 
