@@ -156,28 +156,51 @@ function ConvergenceBody({
   yMax: number;
   showTrend: boolean;
 }) {
-  // Rolling median over time: bucket events by hour, take median of
-  // profile_median per bucket. profile_median == 0 means TARGET_MET-
-  // at-iter-1 (no Aβ to measure); treat it the same as null so the
-  // rolling line doesn't bounce between ~1.0 (oscillating runs) and 0
-  // (unmeasured runs) every hour. Mirrors the receiver's stats
-  // aggregate which excludes null profile_max for the same reason.
+  // Rolling median over time — sliding window. For each daily timestamp
+  // between min(ts) and max(ts), take the median of all measurable events
+  // within ±half-window. Step + window sized to match the chart's actual
+  // resolution: the X axis spans 30 days, so a daily step gives ~30
+  // output points, plenty for a smooth-looking trend line without
+  // pretending to hourly precision. A 3-day window averages over ~66
+  // measurable events on the bench (~22/day × 3 days), which is enough
+  // sample for a stable daily median.
+  //
+  // profile_median == 0 means TARGET_MET-at-iter-1 (no Aβ measured);
+  // treat both null and zero as unmeasurable. Mirrors the receiver's
+  // ab_median aggregate which excludes null profile_max.
   const rolling = useMemo(() => {
     if (!showTrend || events.length === 0) return [];
-    const buckets = new Map<number, number[]>();
-    for (const e of events) {
-      if (e.profile_median == null || e.profile_median <= 0) continue;
-      const bucket = Math.floor(e.timestamp_hour / 3600) * 3600;
-      const arr = buckets.get(bucket);
-      if (arr) arr.push(e.profile_median);
-      else buckets.set(bucket, [e.profile_median]);
-    }
+    const measurable = events
+      .filter(
+        (e): e is typeof e & { profile_median: number } =>
+          typeof e.profile_median === "number" && e.profile_median > 0,
+      )
+      .map((e) => ({ ts: e.timestamp_hour, v: e.profile_median }))
+      .sort((a, b) => a.ts - b.ts);
+    if (measurable.length === 0) return [];
+
+    const DAY_S = 24 * 3600;
+    const WINDOW_S = 3 * DAY_S; // 3-day sliding window
+    const STEP_S = DAY_S; // one output point per day
+    const halfWindow = WINDOW_S / 2;
+    const tMin = measurable[0]!.ts;
+    const tMax = measurable[measurable.length - 1]!.ts;
     const out: Array<{ ts: number; median: number }> = [];
-    for (const [ts, vals] of buckets) {
-      const m = median(vals);
-      if (m != null) out.push({ ts, median: m });
+
+    // Two-pointer sweep — lo/hi index into `measurable` to mark the
+    // events currently inside the [t-halfWindow, t+halfWindow] window.
+    let lo = 0;
+    let hi = 0;
+    for (let t = tMin; t <= tMax; t += STEP_S) {
+      const wLo = t - halfWindow;
+      const wHi = t + halfWindow;
+      while (lo < measurable.length && measurable[lo]!.ts < wLo) lo++;
+      while (hi < measurable.length && measurable[hi]!.ts <= wHi) hi++;
+      if (hi - lo === 0) continue;
+      const window = measurable.slice(lo, hi).map((e) => e.v);
+      const m = median(window);
+      if (m != null) out.push({ ts: t, median: m });
     }
-    out.sort((a, b) => a.ts - b.ts);
     return out;
   }, [events, showTrend]);
 
