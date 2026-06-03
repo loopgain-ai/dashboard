@@ -3,6 +3,9 @@
 // when no endpoint is configured.
 
 import { useEffect, useMemo, useState } from "react";
+// The dashboard app's OWN version (this SaaS frontend), kept separate from the
+// loopgain library version. Single-sourced from this repo's package.json.
+import { version as APP_VERSION } from "../package.json";
 import { AuthContext, useAuthProvider } from "./lib/api";
 import { FilterContext, useFiltersProvider } from "./lib/filters";
 import { DemoParamsContext, useDemoParamsProvider } from "./lib/demo-params";
@@ -286,7 +289,10 @@ function AppInner() {
             flexWrap: "wrap",
           }}
         >
-          <span className="mono footer-secondary">v0.3.0</span>
+          {/* The DASHBOARD's own version (this app), sourced from its
+              package.json — NOT the loopgain library version. Keep these
+              decoupled: the dashboard and the library version independently. */}
+          <span className="mono footer-secondary">v{APP_VERSION}</span>
           <span className="footer-secondary">·</span>
           <span>
             ingestion{" "}

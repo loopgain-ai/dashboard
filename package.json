@@ -1,7 +1,7 @@
 {
   "name": "loopgain-dashboard",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "description": "Fleet telemetry dashboard for LoopGain — the six-panel SaaS surface on top of the open-source library.",
   "scripts": {

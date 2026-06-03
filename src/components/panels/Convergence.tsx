@@ -364,7 +364,7 @@ function ConvergenceBody({
         </div>
         <div style={{ padding: "4px 0" }}>
           {[
-            { id: "FAST_CONVERGE" as const, range: "cumulative E ≤ 10%", desc: "Strong contraction. Halt early if budget-bound." },
+            { id: "FAST_CONVERGE" as const, range: "cumulative E ≤ 10%", desc: "Strong contraction, still improving. Continue; ETA predicted." },
             { id: "CONVERGING" as const, range: "trend < 0, p < 0.05", desc: "Healthy convergence. Continue." },
             { id: "STALLING" as const, range: "no trend, no oscillation", desc: "No progress. Stops after 2 consecutive readings." },
             { id: "OSCILLATING" as const, range: "high variance, flat trend", desc: "No net error reduction. Rollback armed." },

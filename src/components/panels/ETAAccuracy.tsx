@@ -249,8 +249,8 @@ function ETAAccuracyBody({ events }: { events: ReadonlyArray<CalibrationEvent> }
               <div className="mono" style={{ color: "var(--band-conv)", marginBottom: 4 }}>
                 MAPE &lt; 15%
               </div>
-              Calibration is solid. "Stop early, you'll converge in N more iterations"
-              decisions can be trusted.
+              Calibration is solid. The "N more iterations to target" ETA
+              prediction can be trusted.
             </div>
             <div>
               <div className="mono" style={{ color: "var(--band-stall)", marginBottom: 4 }}>
