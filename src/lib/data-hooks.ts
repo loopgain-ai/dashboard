@@ -15,8 +15,6 @@ import {
   getAlertDeliveriesBench,
   getAlertRules,
   getAlertRulesBench,
-  getCalibration,
-  getCalibrationBench,
   getEventDetail,
   getEventDetailBench,
   getEvents,
@@ -32,7 +30,6 @@ import {
 import { useFilters } from "./filters";
 import { useDemoParams } from "./demo-params";
 import {
-  scaleCalibration,
   scaleEvents,
   scaleProfiles,
   scaleStats,
@@ -40,7 +37,6 @@ import {
 import type {
   AlertDeliveriesResponse,
   AlertRulesResponse,
-  CalibrationResponse,
   EventDetailResponse,
   EventsResponse,
   ProfilesResponse,
@@ -213,70 +209,6 @@ export function useEvents(
     return state;
   }, [state, opts.sinceHours]);
   return { state: filtered, refresh };
-}
-
-export function useCalibration(
-  opts: { workloadId?: string; sinceHours?: number; pollMs?: number } = {},
-): { state: LoadState<CalibrationResponse>; refresh: () => void } {
-  const { demo, bench } = useAuth();
-  const { params } = useDemoParams();
-  const { filters } = useFilters();
-  const effectiveWorkload = opts.workloadId ?? filters.workload_id;
-  return useApi<CalibrationResponse>(
-    demo || bench
-      ? null
-      : (c, signal) =>
-          getCalibration(
-            c,
-            {
-              workloadId: effectiveWorkload,
-              sinceHours: opts.sinceHours,
-              framework: filters.framework,
-              loop_type: filters.loop_type,
-              team: filters.team,
-            },
-            signal,
-          ),
-    [
-      effectiveWorkload,
-      opts.sinceHours,
-      filters.framework,
-      filters.loop_type,
-      filters.team,
-      demo ? params.eventsPerMonth : 0,
-      demo ? params.dollarsPerIter : 0,
-    ],
-    {
-      benchLoader: bench
-        ? (signal) =>
-            getCalibrationBench(
-              {
-                workloadId: effectiveWorkload,
-                sinceHours: opts.sinceHours,
-                framework: filters.framework,
-                loop_type: filters.loop_type,
-                team: filters.team,
-              },
-              signal,
-            )
-        : demo
-        ? async (signal) =>
-            scaleCalibration(
-              await getCalibrationBench(
-                {
-                  workloadId: effectiveWorkload,
-                  sinceHours: opts.sinceHours,
-                  framework: filters.framework,
-                  loop_type: filters.loop_type,
-                  team: filters.team,
-                },
-                signal,
-              ),
-              params,
-            )
-        : undefined,
-    },
-  );
 }
 
 export function useAlertRules(

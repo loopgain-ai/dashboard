@@ -35,7 +35,7 @@ from loopgain import LoopGain
 lg = LoopGain(target_error=0.1, max_iterations=20)
 while lg.should_continue():
     errors = verifier.verify(output)
-    lg.observe(errors)
+    lg.observe(errors, output)  # pass output so best-so-far rollback works
     output = reviser.revise(output, errors)
 
 # Optional — send anonymized aggregates to the hosted dashboard.

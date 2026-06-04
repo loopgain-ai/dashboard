@@ -147,25 +147,6 @@ export interface EventsResponse {
   events: LoopEvent[];
 }
 
-/** One row from GET /v1/calibration: a converged loop with a captured eta. */
-export interface CalibrationEvent extends Classification {
-  id?: number;
-  timestamp_hour: number;
-  workload_id: string | null;
-  iterations_used: number;
-  first_eta_prediction: number;
-  first_eta_at_iteration: number;
-  gain_margin: number | null;
-  library_version: string;
-}
-
-/** GET /v1/calibration response. */
-export interface CalibrationResponse {
-  customer_id: string;
-  workload_id: string | null;
-  events: CalibrationEvent[];
-}
-
 /** Full event detail returned by GET /v1/event/:id (schema v3). */
 export interface EventDetail extends Classification {
   id: number;

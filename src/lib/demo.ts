@@ -28,7 +28,6 @@
 import type {
   AlertDelivery,
   AlertRule,
-  CalibrationResponse,
   EventsResponse,
   LoopEvent,
   Outcome,
@@ -315,20 +314,6 @@ export function scaleEvents(
   };
 }
 
-export function scaleCalibration(
-  bench: CalibrationResponse,
-  params: DemoParams,
-): CalibrationResponse {
-  const rng = mulberry32(seedFromParams(params) ^ 0xa5a5a5);
-  const sampled = bootstrap(bench.events, VISIBLE_SAMPLE_CAP, rng);
-  const spread = spreadTimestamps(sampled, rng);
-  return {
-    customer_id: "demo-projection",
-    workload_id: bench.workload_id,
-    events: spread,
-  };
-}
-
 // Alert rules pass through unchanged — the rule list is a tenant config
 // concept, not a volume/cost concept. The bench tenant ships a small
 // sample of demo rules.
@@ -342,7 +327,6 @@ export function scaleCalibration(
 export type {
   AlertDelivery,
   AlertRule,
-  CalibrationResponse,
   EventsResponse,
   LoopEvent,
   Outcome,

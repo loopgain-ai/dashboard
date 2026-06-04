@@ -17,7 +17,6 @@ export type RouteId =
   | "waste"
   | "gain-margin"
   | "rollbacks"
-  | "eta"
   | "alerts"
   | "settings"
   | "empty"
@@ -30,7 +29,6 @@ export const NAV: ReadonlyArray<NavItem> = [
   { id: "waste", label: "Waste", icon: "Dollar", kbd: "g w" },
   { id: "gain-margin", label: "Gain Margin", icon: "Bars", kbd: "g m" },
   { id: "rollbacks", label: "Rollbacks", icon: "Undo", kbd: "g r" },
-  { id: "eta", label: "ETA Accuracy", icon: "Clock", kbd: "g e" },
   { id: "alerts", label: "Alerts", icon: "Bolt", kbd: "g a" },
 ];
 

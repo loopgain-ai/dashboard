@@ -32,7 +32,6 @@ import { Convergence } from "./components/panels/Convergence";
 import { Waste } from "./components/panels/Waste";
 import { GainMargin } from "./components/panels/GainMargin";
 import { Rollbacks } from "./components/panels/Rollbacks";
-import { ETAAccuracy } from "./components/panels/ETAAccuracy";
 import { LoopDetail } from "./components/panels/LoopDetail";
 import { Alerts } from "./components/panels/Alerts";
 import { Settings } from "./components/panels/Settings";
@@ -156,7 +155,6 @@ function AppInner() {
           w: "waste",
           m: "gain-margin",
           r: "rollbacks",
-          e: "eta",
           a: "alerts",
           // Settings is hidden in bench mode; the keybinding is gated below.
           s: "settings",
@@ -223,8 +221,6 @@ function AppInner() {
         return <GainMargin pollMs={pollMs} sinceHours={sinceHours} />;
       case "rollbacks":
         return <Rollbacks pollMs={pollMs} sinceHours={sinceHours} />;
-      case "eta":
-        return <ETAAccuracy />;
       case "alerts":
         return <Alerts setRoute={setRoute} />;
       case "settings":

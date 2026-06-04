@@ -19,7 +19,6 @@ import type {
   AlertRulePayload,
   AlertRuleResponse,
   AlertRulesResponse,
-  CalibrationResponse,
   Config,
   EventDetailResponse,
   EventsResponse,
@@ -243,23 +242,6 @@ export function getEventsBench(
   );
 }
 
-export function getCalibrationBench(
-  opts: { workloadId?: string; sinceHours?: number } & FilterSet = {},
-  signal?: AbortSignal,
-): Promise<CalibrationResponse> {
-  return publicGet<CalibrationResponse>(
-    "/calibration",
-    {
-      workload_id: opts.workloadId ?? opts.workload_id,
-      since_hours: opts.sinceHours,
-      framework: opts.framework,
-      loop_type: opts.loop_type,
-      team: opts.team,
-    },
-    signal,
-  );
-}
-
 export function getEventDetailBench(
   id: number,
   signal?: AbortSignal,
@@ -326,26 +308,6 @@ export function getEvents(
       loop_type: opts.loop_type,
       team: opts.team,
       workload_id: opts.workload_id,
-    },
-    signal,
-  );
-}
-
-export function getCalibration(
-  c: Config,
-  opts: { workloadId?: string; sinceHours?: number } & FilterSet = {},
-  signal?: AbortSignal,
-): Promise<CalibrationResponse> {
-  return apiGet<CalibrationResponse>(
-    c.endpoint,
-    c.token,
-    "/v1/calibration",
-    {
-      workload_id: opts.workloadId ?? opts.workload_id,
-      since_hours: opts.sinceHours,
-      framework: opts.framework,
-      loop_type: opts.loop_type,
-      team: opts.team,
     },
     signal,
   );
