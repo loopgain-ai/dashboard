@@ -5,12 +5,22 @@ export function sortedNumbers(arr: ReadonlyArray<number | null | undefined>): nu
   return arr.filter((v): v is number => typeof v === "number" && !Number.isNaN(v)).sort((a, b) => a - b);
 }
 
-/** Inclusive percentile (0..1) over a numeric array. Returns null if empty. */
+/**
+ * Linear-interpolated percentile (0..1) over a numeric array. Returns null if
+ * empty. Uses the standard "type 7" definition (rank = (n-1)·p), so
+ * percentile([1,2,3,4], 0.5) === 2.5, matching the conventional median rather
+ * than biasing toward the upper-middle element.
+ */
 export function percentile(arr: ReadonlyArray<number | null | undefined>, p: number): number | null {
   const xs = sortedNumbers(arr);
   if (xs.length === 0) return null;
-  const idx = Math.min(xs.length - 1, Math.max(0, Math.floor(xs.length * p)));
-  return xs[idx];
+  if (xs.length === 1) return xs[0]!;
+  const clampedP = Math.min(1, Math.max(0, p));
+  const rank = (xs.length - 1) * clampedP;
+  const lo = Math.floor(rank);
+  const hi = Math.ceil(rank);
+  if (lo === hi) return xs[lo]!;
+  return xs[lo]! + (xs[hi]! - xs[lo]!) * (rank - lo);
 }
 
 export function median(arr: ReadonlyArray<number | null | undefined>): number | null {
@@ -42,10 +52,18 @@ export function histogram(
   for (let i = 0; i < edges.length - 1; i++) {
     buckets.push({ lo: edges[i]!, hi: edges[i + 1]!, count: 0, ids: [] });
   }
+  const lastIdx = buckets.length - 1;
   for (const r of rows) {
-    if (typeof r.value !== "number" || Number.isNaN(r.value)) continue;
-    for (const b of buckets) {
-      if (r.value >= b.lo && r.value < b.hi) {
+    if (typeof r.value !== "number" || !Number.isFinite(r.value)) continue;
+    for (let i = 0; i < buckets.length; i++) {
+      const b = buckets[i]!;
+      // Half-open [lo, hi) buckets, except the final bucket is closed [lo, hi]
+      // so a value exactly equal to the top edge is counted rather than
+      // silently dropped. Values strictly above the top edge are still out of
+      // range by construction — callers that may exceed `hi` must supply an
+      // overflow bucket (see GainMargin panel).
+      const inBucket = i === lastIdx ? r.value >= b.lo && r.value <= b.hi : r.value >= b.lo && r.value < b.hi;
+      if (inBucket) {
         b.count++;
         if (r.id) b.ids.push(r.id);
         break;
@@ -55,8 +73,9 @@ export function histogram(
   return buckets;
 }
 
-/** Evenly-spaced bucket edges between [lo, hi]. */
+/** Evenly-spaced bucket edges between [lo, hi]. Returns [] for count <= 0. */
 export function linEdges(lo: number, hi: number, count: number): number[] {
+  if (!Number.isFinite(count) || count <= 0) return [];
   const out: number[] = [];
   const step = (hi - lo) / count;
   for (let i = 0; i <= count; i++) out.push(lo + i * step);
