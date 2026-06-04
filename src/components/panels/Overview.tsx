@@ -132,7 +132,7 @@ function OverviewBody({
   // % CONVERGED — single-scalar fleet-health signal feeding the RingGauge
   // on the left card. Sourced from /v1/stats.outcomes server-side counts
   // (not the recency-biased /events sample), so the gauge reflects
-  // tenant-wide reality. Bench reads 1293 / 2000 = 64.65%.
+  // tenant-wide reality. Bench reads 1302 / 2000 = 65.1%.
   const convCount = outcomeCounts["converged"] ?? 0;
   const convergenceRate = totalEvents > 0 ? (convCount / totalEvents) * 100 : 0;
   // Cells with non-zero matching outcomes; render this set so a healthy
