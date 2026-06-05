@@ -534,8 +534,19 @@ export function useApi<T>(
 
   useEffect(() => {
     if (!opts.pollMs) return;
-    const id = window.setInterval(refresh, opts.pollMs);
-    return () => window.clearInterval(id);
+    // Visibility-gated polling: only refresh while the tab is actually being
+    // looked at, and refresh immediately when it regains focus so the user
+    // sees fresh data the moment they return. A backgrounded or forgotten-open
+    // tab costs nothing — fitting for a cost-control product.
+    const tick = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const id = window.setInterval(tick, opts.pollMs);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+    };
   }, [opts.pollMs, refresh]);
 
   return { state, refresh };

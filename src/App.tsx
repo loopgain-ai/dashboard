@@ -43,6 +43,10 @@ const COST_KEY = "loopgain-dashboard-cost-per-iter";
 const BENCH_BANNER_DISMISSED_KEY = "loopgain-bench-banner-dismissed";
 const DEMO_BANNER_DISMISSED_KEY = "loopgain-demo-banner-dismissed";
 
+// Live-refresh interval. Each tick is one cheap GET to the receiver and is
+// gated on tab visibility (see useApi), so an idle/backgrounded tab is free.
+const LIVE_POLL_MS = 10_000;
+
 type Theme = "dark" | "light";
 
 function loadTheme(): Theme {
@@ -118,10 +122,10 @@ function AppInner() {
     }
   }, [bench, route]);
 
-  // pollMs / sinceHours used to be derived from the time-range selector;
-  // with that gone they're always undefined (= 30d default from receiver,
-  // no polling). Kept as locals so panel prop shapes don't change.
-  const pollMs = undefined;
+  // Live polling. The time-range selector that used to drive this is gone, so
+  // we poll at a fixed interval; useApi gates each tick on tab visibility, so a
+  // backgrounded tab costs nothing. sinceHours stays derived from timeRange.
+  const pollMs = LIVE_POLL_MS;
   const sinceHours = timeRangeHours(timeRange) ?? undefined;
 
   // ── Workloads for palette ───────────────────────────────────────────
