@@ -53,6 +53,12 @@ export interface StatsResponse {
     total_actual_dollars_spent?: number | null;
     /** Count of events with actual_dollars_spent populated. */
     event_count_with_actual_spend?: number;
+    /** Count of events with a measurable gain_margin (loops that ran ≥2
+     *  iterations). event_count minus this is the "stable majority" that
+     *  converged on the first attempt — no GM, never neared instability.
+     *  Receiver v3.4+ only; older receivers omit it and the GM panel falls
+     *  back to its scope note without the headline number. */
+    event_count_with_gain_margin?: number;
   } | null;
   workloads: Array<{ workload_id: string | null; count: number }>;
   // Schema v3: distinct values for the classification fields, used to

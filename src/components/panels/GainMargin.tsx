@@ -79,6 +79,14 @@ function GainMarginBody({
   const belowInstability = eventsWithGM.filter((e) => e.gain_margin! < 1.0).length;
   const pctBelowRisky = eventsWithGM.length > 0 ? belowRisky / eventsWithGM.length : 0;
 
+  // The stable majority: loops with no measurable gain margin converged on the
+  // first attempt and never approached instability. Derived fleet-wide from the
+  // receiver's GM-bearing count (v3.4+); when absent, the panel shows the
+  // qualitative scope note instead of a headline number.
+  const gmBearing = stats.totals?.event_count_with_gain_margin ?? null;
+  const stableCount = gmBearing != null ? Math.max(0, totalEvents - gmBearing) : null;
+  const stablePct = stableCount != null && totalEvents > 0 ? stableCount / totalEvents : null;
+
   const buckets = useMemo(() => {
     if (eventsWithGM.length === 0) return [];
     const edges = linEdges(0.6, 3.24, 22);
@@ -92,14 +100,45 @@ function GainMarginBody({
     <>
       <PanelHeader title="Gain Margin Distribution" />
 
+      {stablePct != null ? (
+        <div
+          style={{
+            margin: "2px 2px 14px",
+            padding: "12px 14px",
+            borderRadius: 8,
+            border: "1px solid color-mix(in oklab, var(--band-conv) 35%, transparent)",
+            background: "color-mix(in oklab, var(--band-conv) 8%, transparent)",
+            fontSize: 13,
+            lineHeight: 1.5,
+            color: "var(--text-2)",
+          }}
+        >
+          <span style={{ color: "var(--band-conv)", fontWeight: 600, fontSize: 15 }}>
+            {fmtPct(stablePct)} of loops converged on the first attempt
+          </span>{" "}
+          ({fmtInt(stableCount!)} of {fmtInt(totalEvents)}) — no gain margin to measure, so they
+          never approached the instability boundary. The {fmtInt(gmBearing!)} loops that had to
+          iterate are characterised below.
+        </div>
+      ) : (
+        <div
+          style={{ fontSize: 12, color: "var(--text-3)", margin: "2px 2px 12px", lineHeight: 1.5 }}
+        >
+          Gain margin is defined only for loops that ran ≥2 iterations. Loops that converge on the
+          first attempt — typically the majority of a healthy fleet — have no GM and aren&apos;t
+          counted below; they never approached the instability boundary. These numbers describe the
+          loops that <em>did</em> have to iterate.
+        </div>
+      )}
+
       <div className="card gm-kpi-strip" style={{ padding: 0 }}>
         {[
           {
             label: "Median GM",
             value: gmMedian.toFixed(2),
-            sub: `${fmtInt(totalEvents)} events · fleet-wide`,
+            sub: "median · loops with measurable GM",
           },
-          { label: "p10 GM", value: gmP10.toFixed(2), sub: "worst 10% · fleet-wide" },
+          { label: "p10 GM", value: gmP10.toFixed(2), sub: "worst 10% · loops with measurable GM" },
           {
             label: "GM < 1.2",
             value: fmtPct(pctBelowRisky),

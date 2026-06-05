@@ -239,6 +239,17 @@ export function scaleStats(
           event_count_with_actual_spend: Math.round(
             (benchTotals.event_count_with_actual_spend ?? benchEventCount) * f,
           ),
+          // Scale the GM-bearing count by the same factor as event_count so the
+          // GM panel's "stable majority" share stays coherent in the projection
+          // (otherwise event_count scales to millions while the raw GM sample
+          // stays in the hundreds). Omit when the receiver didn't supply it.
+          ...(benchTotals.event_count_with_gain_margin != null
+            ? {
+                event_count_with_gain_margin: Math.round(
+                  benchTotals.event_count_with_gain_margin * f,
+                ),
+              }
+            : {}),
         }
       : null,
     workloads: bench.workloads.map((w) => ({
