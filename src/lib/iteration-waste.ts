@@ -27,10 +27,14 @@ import { median } from "./stats";
  *  see loopgain-verify `dash.live_savings`). */
 export const FIXED_CAP_BASELINE = 20;
 
-/** Quality degradation past best — what running PAST the best output actually
- *  costs, not just in money. Measured on the 2,000-loop LoopGain benchmark over
- *  the 698 loops whose best output was NOT the final iteration (best_index ≠
- *  last): the final answer's error vs. the best answer's error.
+/** Quality cost of a FIXED CAP running past best — what max_iter=20 actually
+ *  ships, not just in money. Measured on the 2,000-loop LoopGain benchmark over
+ *  the 1,999 B20 (max_iter=20) trajectories whose best output was NOT the final
+ *  (20th) iteration: the final/shipped answer's error vs. the best answer's
+ *  error. This is the fixed cap's behaviour — the counterfactual LoopGain
+ *  replaces — NOT LoopGain's own short overrun (which is near-circular: LG
+ *  overruns only while detecting divergence, so its next reading is worse by
+ *  selection). 706/1999 ship worse; the other 1,293 plateau (final == best).
  *
  *  NOT live-computable: the receiver carries best_index but not the per-iteration
  *  error_history, so the dashboard cannot derive this from a customer's own
@@ -40,11 +44,12 @@ export const FIXED_CAP_BASELINE = 20;
  *  equal the raw recompute). If the bench is ever re-derived, those checks go
  *  red until these are updated. */
 export const BENCH_OVERRUN = {
-  /** Fraction of overrun loops whose FINAL error is strictly worse than best.
-   *  (487 / 698 on the bench — the rest plateaued: final == best.) */
-  degradedFraction: 0.698,
+  /** Fraction of fixed-cap overrun loops whose SHIPPED (final) error is strictly
+   *  worse than the best the loop already reached. (706 / 1999 on the bench;
+   *  the remaining 0.647 plateaued — final == best.) */
+  degradedFraction: 0.353,
   /** Median (final error / best error) among the loops that degraded. */
-  degradedMedianX: 2.0,
+  degradedMedianX: 3.0,
   /** Worst observed (final error / best error) ratio. */
   degradedMaxX: 11.0,
 } as const;

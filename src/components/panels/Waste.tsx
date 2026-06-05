@@ -484,13 +484,13 @@ function WasteBody({
           <div
             style={{ fontSize: 11.5, color: "var(--text-3)", padding: "10px 16px 0", lineHeight: 1.5, maxWidth: 880 }}
           >
-            Iterations a loop runs <em>after</em> its best output — and they don&apos;t just waste
-            money. On{" "}
+            Iterations a loop runs <em>after</em> its best output — mostly wasted spend, but not
+            only that. When a fixed <span className="mono">max_iter={FIXED_CAP_BASELINE}</span> cap
+            grinds past best,{" "}
             <span style={{ color: "var(--text-1)" }}>{fmtPct(BENCH_OVERRUN.degradedFraction)}</span>{" "}
-            of these loops the final answer is <em>measurably worse</em> than the best (median{" "}
-            <span style={{ color: "var(--text-1)" }}>{BENCH_OVERRUN.degradedMedianX}×</span> the error).
-            A fixed <span className="mono">max_iter={FIXED_CAP_BASELINE}</span> cap ships that degraded
-            answer; LoopGain rolls back to the best.
+            of the time it ships an answer <em>measurably worse</em> than the best it already had
+            (median <span style={{ color: "var(--text-1)" }}>{BENCH_OVERRUN.degradedMedianX}×</span>{" "}
+            the error); the rest plateau. LoopGain rolls back to the best.
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", padding: 16, gap: 0 }}>
             {[
@@ -562,9 +562,9 @@ function WasteBody({
                 marginBottom: 8,
               }}
             >
-              <div className="label">It&apos;s not just wasted — it&apos;s worse</div>
+              <div className="label">Wasted — and 1 in 3 times, worse</div>
               <span className="mono" style={{ fontSize: 10, color: "var(--text-3)" }}>
-                final vs. best error · measured on the LoopGain benchmark
+                fixed cap · shipped vs. best error · measured on the LoopGain benchmark
               </span>
             </div>
             <div
@@ -582,7 +582,7 @@ function WasteBody({
                   background: "var(--band-div)",
                   opacity: 0.85,
                 }}
-                title={`${fmtPct(BENCH_OVERRUN.degradedFraction)} of loops that overran ended up worse`}
+                title={`${fmtPct(BENCH_OVERRUN.degradedFraction)} of fixed-cap overrun loops ship worse than best`}
               />
               <div
                 style={{
@@ -606,13 +606,14 @@ function WasteBody({
                 <span className="mono" style={{ color: "var(--band-div)" }}>
                   {fmtPct(BENCH_OVERRUN.degradedFraction)}
                 </span>{" "}
-                ended up worse than best — median{" "}
+                ship worse than best — median{" "}
                 <span style={{ color: "var(--text-1)" }}>{BENCH_OVERRUN.degradedMedianX}×</span>{" "}
                 the error, up to{" "}
                 <span style={{ color: "var(--text-1)" }}>{BENCH_OVERRUN.degradedMaxX}×</span>
               </span>
               <span>
                 <span className="mono">{fmtPct(1 - BENCH_OVERRUN.degradedFraction)}</span> plateaued
+                (pure wasted spend)
               </span>
             </div>
           </div>
