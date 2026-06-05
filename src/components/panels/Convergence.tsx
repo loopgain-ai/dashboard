@@ -1,17 +1,26 @@
-// Panel 2 — Convergence Profiles.
+// Panel 2 — Convergence.
 //
-// Plots per-event `profile_median` over time, with band thresholds as
-// background bands and an optional rolling-median trend overlay.
+// Leads with the iterations-to-best distribution (best_index + 1 per event)
+// and the "no static cap is both cheap and safe" argument — the standing
+// rebuttal to "why not just lower max_iter?". Mirrors loopgain-verify
+// `thesis.iteration_waste`. Below it: the Aβ_median-over-time trajectory
+// with band thresholds + rolling median, and the State classifier card.
 // Optional workload filter; optional sinceHours window override.
 
 import { useMemo, useState } from "react";
-import { useProfiles, useStats } from "../../lib/data-hooks";
+import { useEvents, useProfiles, useStats } from "../../lib/data-hooks";
 import { PanelHeader, Chip, StatePill } from "../primitives";
-import { ConvergenceOverTime } from "../charts";
+import { ConvergenceOverTime, HBar } from "../charts";
 import { Loaded } from "./PanelState";
 import { median } from "../../lib/stats";
-import { fmtInt } from "../../lib/format";
-import type { ProfileEvent } from "../../types";
+import { fmtInt, fmtPct } from "../../lib/format";
+import {
+  FIXED_CAP_BASELINE,
+  falseStopsAtCap,
+  iterationWasteFleet,
+  iterationWasteSample,
+} from "../../lib/iteration-waste";
+import type { LoopEvent, ProfileEvent, StatsResponse } from "../../types";
 
 interface Props {
   pollMs?: number;
@@ -20,6 +29,7 @@ interface Props {
 
 export function Convergence({ pollMs, sinceHours }: Props) {
   const stats = useStats({ pollMs });
+  const events = useEvents({ pollMs, sinceHours });
   const [workloadFilter, setWorkloadFilter] = useState<string | null>(null);
   const [yMax, setYMax] = useState<number>(1.6);
   const [showTrend, setShowTrend] = useState<boolean>(true);
@@ -34,8 +44,16 @@ export function Convergence({ pollMs, sinceHours }: Props) {
       <Loaded state={stats.state}>
         {(statsData) => (
           <>
+            <PanelHeader title="Convergence" />
+
+            <Loaded state={events.state}>
+              {(eventsData) => (
+                <IterationsToBest events={eventsData.events} stats={statsData} />
+              )}
+            </Loaded>
+
             <PanelHeader
-              title="Convergence Profiles"
+              title="Aβ trajectory"
               right={
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <Chip on={showTrend} onClick={() => setShowTrend((s) => !s)}>
@@ -110,8 +128,6 @@ export function Convergence({ pollMs, sinceHours }: Props) {
                   totalEvents={statsData.totals?.event_count ?? profilesData.events.length}
                   abMedian={statsData.aggregates?.ab_median ?? 0}
                   abP99={statsData.aggregates?.ab_p99 ?? 0}
-                  gmMedian={statsData.aggregates?.gm_median ?? 0}
-                  gmP10={statsData.aggregates?.gm_p10 ?? 0}
                   yMax={yMax}
                   showTrend={showTrend}
                 />
@@ -121,6 +137,233 @@ export function Convergence({ pollMs, sinceHours }: Props) {
         )}
       </Loaded>
     </div>
+  );
+}
+
+// Iterations-to-best lead section — the "no static cap is both cheap and
+// safe" argument, told entirely from live data. The fleet headline numbers
+// come from the receiver's served best_index aggregates (proven == raw by
+// loopgain-verify `dash.live_iteration_waste`); the distribution + medians +
+// false-stop counts come from the /events sample. All display math lives in
+// lib/iteration-waste.ts so loopgain-verify can pin it.
+function IterationsToBest({
+  events,
+  stats,
+}: {
+  events: ReadonlyArray<LoopEvent>;
+  stats: StatsResponse;
+}) {
+  const t = stats.totals;
+  const hasFleet =
+    t != null &&
+    typeof t.event_count_with_best_index === "number" &&
+    t.event_count_with_best_index > 0;
+
+  const sample = useMemo(() => iterationWasteSample(events), [events]);
+  const cap1FalseStop = useMemo(() => falseStopsAtCap(events, 1), [events]);
+  const cap2FalseStop = useMemo(() => falseStopsAtCap(events, 2), [events]);
+
+  if (!hasFleet) {
+    return (
+      <div
+        className="card"
+        style={{ padding: 18, marginBottom: 16, color: "var(--text-3)", fontSize: 12 }}
+      >
+        Iterations-to-best is unavailable — this tenant&apos;s receiver predates
+        the <span className="mono">best_index</span> column (v3.5+). Loops ingested
+        after the upgrade will populate it.
+      </div>
+    );
+  }
+
+  const fleet = iterationWasteFleet({
+    event_count_with_best_index: t!.event_count_with_best_index!,
+    event_count_best_at_iter1: t!.event_count_best_at_iter1 ?? 0,
+    total_iterations_past_best: t!.total_iterations_past_best ?? 0,
+    total_savings: t!.total_savings,
+  });
+
+  const distMax = Math.max(...sample.distribution.map((d) => d.count), 1);
+
+  return (
+    <>
+      {/* Hero: where best lands + the headline share */}
+      <div className="card" style={{ padding: 24, marginBottom: 16 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+            marginBottom: 4,
+          }}
+        >
+          <h3 style={{ margin: 0, fontSize: 13, fontWeight: 500 }}>
+            Where loops reach their best output
+          </h3>
+          <span className="mono" style={{ fontSize: 10.5, color: "var(--text-3)" }}>
+            best_index + 1 · {fmtInt(fleet.withBestIndex)} loops
+          </span>
+        </div>
+        <div
+          style={{
+            fontSize: 11.5,
+            color: "var(--text-3)",
+            lineHeight: 1.5,
+            maxWidth: 820,
+            marginBottom: 16,
+          }}
+        >
+          Each loop&apos;s best output (lowest error) lands at a different iteration.
+          You can&apos;t know which in advance — so no single static{" "}
+          <span className="mono">max_iter</span> is both cheap and safe.
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(220px, 0.8fr) 1.2fr",
+            gap: 28,
+            alignItems: "center",
+          }}
+        >
+          <div>
+            <div
+              className="mono"
+              style={{
+                fontSize: 56,
+                fontWeight: 500,
+                letterSpacing: "-0.03em",
+                color: "var(--band-conv)",
+                lineHeight: 1,
+              }}
+            >
+              {fmtPct(fleet.pctBestAtIter1)}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 8, maxWidth: 240, lineHeight: 1.45 }}>
+              of loops reach their best on the first iteration — but{" "}
+              <span style={{ color: "var(--text-1)" }}>{fmtInt(fleet.bestPastIter1)}</span>{" "}
+              ({fmtPct(1 - fleet.pctBestAtIter1)}) only get there later, spanning up to
+              iteration <span className="mono" style={{ color: "var(--text-1)" }}>{sample.maxIterationsToBest}</span>.
+            </div>
+          </div>
+
+          <div>
+            <div className="label" style={{ marginBottom: 10 }}>
+              Iterations to best · distribution
+            </div>
+            <HBar
+              rows={sample.distribution.map((d) => ({
+                label: `iter ${d.iter}`,
+                value: d.count,
+                color: d.iter === 1 ? "var(--band-conv)" : "var(--band-stall)",
+              }))}
+              max={distMax}
+              valueFmt={(v) => fmtInt(v)}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* The no-static-cap argument: two failure modes + LoopGain */}
+      <div
+        className="card"
+        style={{ padding: 0, marginBottom: 16, overflow: "hidden" }}
+      >
+        <div className="card-h">
+          <h3>Why no static cap works</h3>
+          <span className="mono" style={{ fontSize: 10.5, color: "var(--text-3)" }}>
+            vs. the common max_iter={FIXED_CAP_BASELINE}
+          </span>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+          }}
+        >
+          {[
+            {
+              tone: "var(--band-osc)",
+              head: "Cap too low",
+              big: fmtInt(cap1FalseStop),
+              bigSub: `loops (${fmtPct(cap1FalseStop / Math.max(fleet.withBestIndex, 1))})`,
+              body: (
+                <>
+                  Stop at 1 iteration and you false-stop{" "}
+                  <span style={{ color: "var(--text-1)" }}>{fmtInt(cap1FalseStop)}</span> loops
+                  before their best — shipping a worse result. Even a cap of 2 still clips{" "}
+                  <span style={{ color: "var(--text-1)" }}>{fmtInt(cap2FalseStop)}</span>.
+                </>
+              ),
+            },
+            {
+              tone: "var(--band-stall)",
+              head: "Cap too high",
+              big: fmtInt(sample.fixedCapGrindMedian),
+              bigSub: "median iters past best",
+              body: (
+                <>
+                  The usual <span className="mono">max_iter={FIXED_CAP_BASELINE}</span> grinds a
+                  median of{" "}
+                  <span style={{ color: "var(--text-1)" }}>{fmtInt(sample.fixedCapGrindMedian)}</span>{" "}
+                  iterations past best on the {fmtPct(fleet.pctBestAtIter1)} already done at iter 1
+                  — <span style={{ color: "var(--text-1)" }}>{fmtInt(fleet.fixedCapGrindTotal)}</span>{" "}
+                  wasted iterations, producing nothing better.
+                </>
+              ),
+            },
+            {
+              tone: "var(--band-conv)",
+              head: "LoopGain",
+              big: fmtPct(fleet.grindEliminatedPct),
+              bigSub: "of the grind eliminated",
+              body: (
+                <>
+                  Runs a hair past best, then rolls back to it — median{" "}
+                  <span style={{ color: "var(--text-1)" }}>{fmtInt(sample.lgGrindMedian)}</span>{" "}
+                  iterations past best,{" "}
+                  <span style={{ color: "var(--text-1)" }}>{fmtInt(fleet.lgGrindTotal)}</span> residual;
+                  the {fmtInt(fleet.bestPastIter1)}-loop late-converging tail kept, the grind gone.
+                </>
+              ),
+            },
+          ].map((c, i) => (
+            <div
+              key={i}
+              style={{
+                padding: 18,
+                borderLeft: i === 0 ? "none" : "1px solid var(--border)",
+              }}
+            >
+              <div
+                className="mono"
+                style={{
+                  fontSize: 10,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  color: c.tone,
+                  marginBottom: 8,
+                }}
+              >
+                {c.head}
+              </div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <span
+                  className="mono"
+                  style={{ fontSize: 30, fontWeight: 500, color: "var(--text-1)", letterSpacing: "-0.02em" }}
+                >
+                  {c.big}
+                </span>
+                <span style={{ fontSize: 10.5, color: "var(--text-3)" }}>{c.bigSub}</span>
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 8, lineHeight: 1.5 }}>
+                {c.body}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -142,8 +385,6 @@ function ConvergenceBody({
   totalEvents,
   abMedian,
   abP99,
-  gmMedian,
-  gmP10,
   yMax,
   showTrend,
 }: {
@@ -151,8 +392,6 @@ function ConvergenceBody({
   totalEvents: number;
   abMedian: number;
   abP99: number;
-  gmMedian: number;
-  gmP10: number;
   yMax: number;
   showTrend: boolean;
 }) {
@@ -248,7 +487,7 @@ function ConvergenceBody({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
+            gridTemplateColumns: "repeat(2, 1fr)",
             marginTop: 14,
             borderTop: "1px solid var(--border)",
           }}
@@ -264,22 +503,12 @@ function ConvergenceBody({
               value: abP99.toFixed(2),
               sub: abP99 > 0 ? abBandLabel(abP99) + " · worst 1%" : "worst 1%",
             },
-            {
-              label: "Gain margin · median",
-              value: gmMedian.toFixed(2),
-              sub: "distance from instability boundary",
-            },
-            {
-              label: "Gain margin · p10",
-              value: gmP10.toFixed(2),
-              sub: "worst 10% of runs",
-            },
           ].map((k, i) => (
             <div
               key={i}
               style={{
                 padding: 14,
-                borderRight: i < 3 ? "1px solid var(--border)" : "none",
+                borderRight: i < 1 ? "1px solid var(--border)" : "none",
               }}
             >
               <div

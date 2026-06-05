@@ -250,6 +250,22 @@ export function scaleStats(
                 ),
               }
             : {}),
+          // Iteration-waste aggregates scale by the same factor as event_count
+          // so the Convergence/Waste "no static cap" panels stay coherent in
+          // the projection (best-at-iter1 share + grind totals track volume).
+          ...(benchTotals.event_count_with_best_index != null
+            ? {
+                event_count_with_best_index: Math.round(
+                  benchTotals.event_count_with_best_index * f,
+                ),
+                total_iterations_past_best: Math.round(
+                  (benchTotals.total_iterations_past_best ?? 0) * f,
+                ),
+                event_count_best_at_iter1: Math.round(
+                  (benchTotals.event_count_best_at_iter1 ?? 0) * f,
+                ),
+              }
+            : {}),
         }
       : null,
     workloads: bench.workloads.map((w) => ({

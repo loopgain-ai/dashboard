@@ -61,7 +61,7 @@ export function histogram(
       // so a value exactly equal to the top edge is counted rather than
       // silently dropped. Values strictly above the top edge are still out of
       // range by construction — callers that may exceed `hi` must supply an
-      // overflow bucket (see GainMargin panel).
+      // overflow bucket.
       const inBucket = i === lastIdx ? r.value >= b.lo && r.value <= b.hi : r.value >= b.lo && r.value < b.hi;
       if (inBucket) {
         b.count++;

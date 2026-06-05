@@ -3,8 +3,8 @@
 import { useMemo, type ReactNode } from "react";
 import { useEventDetail, useEvents, useStats } from "../../lib/data-hooks";
 import { bandFromEvent } from "../../lib/bands";
-import { fmtRel, fmtTime, fmtUSD, fmtInt, fmtCompact } from "../../lib/format";
-import { median, percentile } from "../../lib/stats";
+import { fmtRel, fmtTime, fmtUSD, fmtInt, fmtCompact, fmtPct } from "../../lib/format";
+import { iterationWasteFleet } from "../../lib/iteration-waste";
 // Hardcoded fixed-cap baseline used in the "Iterations · 30d" tile. Matches
 // `max_iter=20` from the bench protocol; for paying-customer fleet view this
 // should be sourced from tenant config when that view ships.
@@ -153,30 +153,6 @@ function OverviewBody({
   const attentionCount =
     (outcomeCounts["oscillating"] ?? 0) + (outcomeCounts["diverged"] ?? 0);
   const hasDiverged = (outcomeCounts["diverged"] ?? 0) > 0;
-  // Tenant-wide percentile aggregates from /v1/stats.aggregates when present
-  // (newer receiver), else fall back to client-medians over the /events
-  // sample (older receiver). The fallback is recency-biased; the server path
-  // isn't. Most prod tenants should have aggregates; fallback exists so a
-  // self-hosted older receiver still renders something rather than empty.
-  //
-  // Receiver v0.3.1+ excludes rows with NULL profile_max from ab_median
-  // and ab_p99, so the headline Aβ numbers are now honest on tenants
-  // with lots of TARGET_MET-at-iter-1 runs (bench is the canonical case).
-  // Pre-v0.3.1 receivers will still return 0 here; the fallback path
-  // covers them.
-  // Gain-margin medians stay here only to feed the Gain Margin cardlet's
-  // teaser text. The four Aβ-derived headline stats (median Aβ, p99 Aβ,
-  // GM median, GM p10) used to live in the KPI quad on Overview but moved
-  // to the Convergence panel with proper context (band-strip + methodology
-  // footnote) — Overview now reads cleanly without Aβ vocabulary.
-  const sampleGmValues = useMemo(
-    () => events.map((e) => e.gain_margin),
-    [events],
-  );
-  const agg = stats.aggregates;
-  const gmMedian = agg?.gm_median ?? median(sampleGmValues) ?? 0;
-  const gmP10 = agg?.gm_p10 ?? percentile(sampleGmValues, 0.1) ?? 0;
-
   const totals = stats.totals ?? {
     event_count: 0,
     total_iterations: 0,
@@ -641,11 +617,23 @@ function OverviewBody({
             badge: null,
           },
           {
-            route: "gain-margin" as const,
-            icon: "Bars" as const,
-            title: "Gain Margin",
-            desc: `median GM ${gmMedian.toFixed(2)} · p10 ${gmP10.toFixed(2)}`,
-            badge: gmP10 < 1.0 ? "osc" : null,
+            route: "convergence" as const,
+            icon: "Trend" as const,
+            title: "Convergence",
+            desc:
+              typeof totals.event_count_with_best_index === "number" &&
+              totals.event_count_with_best_index > 0
+                ? (() => {
+                    const iw = iterationWasteFleet({
+                      event_count_with_best_index: totals.event_count_with_best_index!,
+                      event_count_best_at_iter1: totals.event_count_best_at_iter1 ?? 0,
+                      total_iterations_past_best: totals.total_iterations_past_best ?? 0,
+                      total_savings: totals.total_savings,
+                    });
+                    return `${fmtPct(iw.pctBestAtIter1)} best at iter 1 · ${fmtPct(iw.grindEliminatedPct)} grind cut`;
+                  })()
+                : "iterations-to-best · no static cap works",
+            badge: null,
           },
         ].map((c, i) => {
           const IconComp = Icon[c.icon];

@@ -15,19 +15,21 @@ export type RouteId =
   | "health-map"
   | "convergence"
   | "waste"
-  | "gain-margin"
   | "rollbacks"
   | "alerts"
   | "settings"
   | "empty"
   | `loop:${string}`;
 
+// Gain Margin retired 2026-06-05: oscillation margin measures a near-non-event
+// on real loops (STALLING dominates, OSCILLATING ~0), and the "iterations past
+// best / no static cap works" story replaced it on Convergence + Waste. The
+// per-loop Aβ trajectory still lives in Loop Detail.
 export const NAV: ReadonlyArray<NavItem> = [
   { id: "overview", label: "Overview", icon: "Activity", kbd: "g o" },
   { id: "health-map", label: "Loop Health Map", icon: "Map", kbd: "g h" },
   { id: "convergence", label: "Convergence", icon: "Trend", kbd: "g c" },
   { id: "waste", label: "Waste", icon: "Dollar", kbd: "g w" },
-  { id: "gain-margin", label: "Gain Margin", icon: "Bars", kbd: "g m" },
   { id: "rollbacks", label: "Rollbacks", icon: "Undo", kbd: "g r" },
   { id: "alerts", label: "Alerts", icon: "Bolt", kbd: "g a" },
 ];

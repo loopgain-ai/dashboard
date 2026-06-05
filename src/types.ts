@@ -59,6 +59,17 @@ export interface StatsResponse {
      *  Receiver v3.4+ only; older receivers omit it and the GM panel falls
      *  back to its scope note without the headline number. */
     event_count_with_gain_margin?: number;
+    /** Iteration-waste aggregates (receiver v3.5+, schema migration 0008).
+     *  best_index is the 0-based lowest-error iteration. These drive the
+     *  Convergence/Waste "no static cap works" panels; loopgain-verify
+     *  `dash.live_iteration_waste` proves each equals a recompute from raw.
+     *  Older receivers omit them and the panels fall back to the sample. */
+    event_count_with_best_index?: number;
+    /** Σ (iterations_used − 1 − best_index): iterations LoopGain ran past the
+     *  best output (its residual grind, ~0 by design). */
+    total_iterations_past_best?: number;
+    /** Count of events whose best output was the first iteration (best_index = 0). */
+    event_count_best_at_iter1?: number;
   } | null;
   workloads: Array<{ workload_id: string | null; count: number }>;
   // Schema v3: distinct values for the classification fields, used to
@@ -139,6 +150,10 @@ export interface LoopEvent extends Classification {
   gain_margin: number | null;
   profile_max: number | null;
   savings_vs_fixed_cap: number | null;
+  /** 0-based iteration with the lowest error (argmin of error_history).
+   *  iterations-to-best = best_index + 1. Receiver v3.5+ (migration 0008);
+   *  NULL on events ingested before the column existed. */
+  best_index: number | null;
   library_version: string;
   // Schema v2: first non-NULL eta snapshot captured during the loop, plus
   // the iteration count when it was captured. Both NULL on v1-era events

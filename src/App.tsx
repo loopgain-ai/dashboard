@@ -30,7 +30,6 @@ import { Overview } from "./components/panels/Overview";
 import { HealthMap } from "./components/panels/HealthMap";
 import { Convergence } from "./components/panels/Convergence";
 import { Waste } from "./components/panels/Waste";
-import { GainMargin } from "./components/panels/GainMargin";
 import { Rollbacks } from "./components/panels/Rollbacks";
 import { LoopDetail } from "./components/panels/LoopDetail";
 import { Alerts } from "./components/panels/Alerts";
@@ -157,7 +156,6 @@ function AppInner() {
           h: "health-map",
           c: "convergence",
           w: "waste",
-          m: "gain-margin",
           r: "rollbacks",
           a: "alerts",
           // Settings is hidden in bench mode; the keybinding is gated below.
@@ -221,8 +219,6 @@ function AppInner() {
             sinceHours={sinceHours}
           />
         );
-      case "gain-margin":
-        return <GainMargin pollMs={pollMs} sinceHours={sinceHours} />;
       case "rollbacks":
         return <Rollbacks pollMs={pollMs} sinceHours={sinceHours} />;
       case "alerts":

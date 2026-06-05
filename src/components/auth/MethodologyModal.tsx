@@ -82,7 +82,7 @@ export function MethodologyModal({ open, onClose }: Props) {
       >
         <Section title="What this is">
           A production-scale projection: every distributional characteristic
-          (Aβ shape, outcome ratios, gain-margin distribution, iteration
+          (Aβ shape, outcome ratios, iterations-to-best, iteration
           counts, framework mix) is bootstrap-sampled from the{" "}
           <a
             href="/benchmark"

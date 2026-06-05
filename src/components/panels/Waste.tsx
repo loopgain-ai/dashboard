@@ -10,7 +10,8 @@ import { useEvents, useStats } from "../../lib/data-hooks";
 import { Chip, Icon, PanelHeader } from "../primitives";
 import { AreaChart, HBar } from "../charts";
 import { Loaded } from "./PanelState";
-import { fmtUSD, fmtInt } from "../../lib/format";
+import { fmtUSD, fmtInt, fmtPct } from "../../lib/format";
+import { BENCH_OVERRUN, FIXED_CAP_BASELINE, iterationWasteFleet } from "../../lib/iteration-waste";
 import type { LoopEvent, StatsResponse } from "../../types";
 
 const OUTCOME_COLOR: Record<string, string> = {
@@ -104,6 +105,30 @@ function WasteBody({
   const counterfactual = hasActualSavings
     ? saved + actualSpend
     : (totals.total_iterations + totals.total_savings) * costPerIter;
+
+  // Iterations-past-best section. Fleet aggregates come from the receiver's
+  // served best_index columns (proven == raw by loopgain-verify
+  // `dash.live_iteration_waste`); display math is the shared pure module.
+  const hasBestIndex =
+    typeof totals.event_count_with_best_index === "number" &&
+    totals.event_count_with_best_index > 0;
+  const iw = hasBestIndex
+    ? iterationWasteFleet({
+        event_count_with_best_index: totals.event_count_with_best_index!,
+        event_count_best_at_iter1: totals.event_count_best_at_iter1 ?? 0,
+        total_iterations_past_best: totals.total_iterations_past_best ?? 0,
+        total_savings: totals.total_savings,
+      })
+    : null;
+  // Value the wasted iterations. The eliminated grind (in iterations) exactly
+  // equals total_savings, so on a measured tenant its dollar value is the very
+  // same `saved` hero number — we derive a per-iteration rate from that pair so
+  // the fixed-cap / residual figures stay on the same (measured) footing.
+  // Falls back to the manual cost/iter when no measured savings exist.
+  const dollarsPerIterEff =
+    hasActualSavings && totals.total_savings > 0
+      ? saved / totals.total_savings
+      : costPerIter;
 
   // Breakdown by workload_id from events
   const byWorkload = useMemo(() => {
@@ -447,6 +472,152 @@ function WasteBody({
           </div>
         </div>
       </div>
+
+      {iw && (
+        <div className="card" style={{ marginTop: 16, padding: 0, overflow: "hidden" }}>
+          <div className="card-h">
+            <h3>Iterations past best</h3>
+            <span className="mono" style={{ fontSize: 10.5, color: "var(--text-3)" }}>
+              best_index · {fmtInt(iw.withBestIndex)} loops
+            </span>
+          </div>
+          <div
+            style={{ fontSize: 11.5, color: "var(--text-3)", padding: "10px 16px 0", lineHeight: 1.5, maxWidth: 880 }}
+          >
+            Iterations a loop runs <em>after</em> its best output — and they don&apos;t just waste
+            money. On{" "}
+            <span style={{ color: "var(--text-1)" }}>{fmtPct(BENCH_OVERRUN.degradedFraction)}</span>{" "}
+            of these loops the final answer is <em>measurably worse</em> than the best (median{" "}
+            <span style={{ color: "var(--text-1)" }}>{BENCH_OVERRUN.degradedMedianX}×</span> the error).
+            A fixed <span className="mono">max_iter={FIXED_CAP_BASELINE}</span> cap ships that degraded
+            answer; LoopGain rolls back to the best.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", padding: 16, gap: 0 }}>
+            {[
+              {
+                tone: "var(--band-stall)",
+                label: `Fixed cap · max_iter=${FIXED_CAP_BASELINE}`,
+                iters: iw.fixedCapGrindTotal,
+                sub: "would grind past best",
+              },
+              {
+                tone: "var(--band-conv)",
+                label: "LoopGain · residual",
+                iters: iw.lgGrindTotal,
+                sub: "ran past best, then rolled back to it",
+              },
+              {
+                tone: "var(--band-fast)",
+                label: "Eliminated",
+                iters: iw.grindEliminated,
+                sub: `${fmtPct(iw.grindEliminatedPct)} of the grind`,
+                strong: true,
+              },
+            ].map((c, i) => (
+              <div
+                key={i}
+                style={{ padding: "4px 18px", borderLeft: i === 0 ? "none" : "1px solid var(--border)" }}
+              >
+                <div
+                  className="mono"
+                  style={{
+                    fontSize: 10,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                    color: c.tone,
+                    marginBottom: 8,
+                  }}
+                >
+                  {c.label}
+                </div>
+                <div
+                  className="mono"
+                  style={{
+                    fontSize: 30,
+                    fontWeight: 500,
+                    color: c.strong ? c.tone : "var(--text-1)",
+                    letterSpacing: "-0.02em",
+                  }}
+                >
+                  {fmtUSD(c.iters * dollarsPerIterEff, { cents: hasActualSavings })}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>
+                  {fmtInt(c.iters)} iterations · {c.sub}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* What the overrun costs in QUALITY, not just money. The error
+              trajectory (final-vs-best) is bench-only — the receiver carries
+              best_index but not error_history — so this is a labeled benchmark
+              receipt, pinned by loopgain-verify thesis.degrades_past_best +
+              dash.ts_overrun_degrade_consts, not a per-tenant live number. */}
+          <div style={{ padding: "4px 18px 20px" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "baseline",
+                marginBottom: 8,
+              }}
+            >
+              <div className="label">It&apos;s not just wasted — it&apos;s worse</div>
+              <span className="mono" style={{ fontSize: 10, color: "var(--text-3)" }}>
+                final vs. best error · measured on the LoopGain benchmark
+              </span>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                height: 14,
+                borderRadius: 3,
+                overflow: "hidden",
+                border: "1px solid var(--border)",
+              }}
+            >
+              <div
+                style={{
+                  width: `${BENCH_OVERRUN.degradedFraction * 100}%`,
+                  background: "var(--band-div)",
+                  opacity: 0.85,
+                }}
+                title={`${fmtPct(BENCH_OVERRUN.degradedFraction)} of loops that overran ended up worse`}
+              />
+              <div
+                style={{
+                  width: `${(1 - BENCH_OVERRUN.degradedFraction) * 100}%`,
+                  background: "var(--surf-3)",
+                }}
+                title="plateaued — final equals best"
+              />
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginTop: 6,
+                fontSize: 11,
+                color: "var(--text-3)",
+                lineHeight: 1.4,
+              }}
+            >
+              <span>
+                <span className="mono" style={{ color: "var(--band-div)" }}>
+                  {fmtPct(BENCH_OVERRUN.degradedFraction)}
+                </span>{" "}
+                ended up worse than best — median{" "}
+                <span style={{ color: "var(--text-1)" }}>{BENCH_OVERRUN.degradedMedianX}×</span>{" "}
+                the error, up to{" "}
+                <span style={{ color: "var(--text-1)" }}>{BENCH_OVERRUN.degradedMaxX}×</span>
+              </span>
+              <span>
+                <span className="mono">{fmtPct(1 - BENCH_OVERRUN.degradedFraction)}</span> plateaued
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="waste-breakdowns">
         {[
