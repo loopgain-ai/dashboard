@@ -572,6 +572,19 @@ export function useAuthProvider(): AuthCtx {
       saveConfig(c);
       setConfig(c);
       setConnection({ status: "connected", customerId: stats.customer_id });
+      // `demo`/`bench` are decided once at mount from the URL and OVERRIDE
+      // config in every data hook (see useApi's `if (bench || demo)` short-
+      // circuit). So connecting while on /demo or /benchmark stores the token
+      // but keeps rendering public data — the user appears "stuck on demo".
+      // Navigate to the authed root so the app remounts with demo=bench=false
+      // and the freshly-stored config takes effect. Mirror image of
+      // disconnect()'s redirect to /demo.
+      if (typeof window !== "undefined") {
+        const p = window.location.pathname;
+        if (p.startsWith("/demo") || p.startsWith("/benchmark")) {
+          window.location.assign("/");
+        }
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setConnection({ status: "error", message: msg });
