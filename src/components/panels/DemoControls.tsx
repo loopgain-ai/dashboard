@@ -22,6 +22,10 @@ interface Props {
   onOpenMethodology: () => void;
 }
 
+// Collapsed/expanded state persists per-visitor so a returning user keeps
+// the panel the way they left it (same pattern as the demo/bench banners).
+const COLLAPSE_KEY = "loopgain-demo-controls-collapsed";
+
 const LOG_MIN = Math.log10(10_000); // 10K events/month
 const LOG_MAX = Math.log10(100_000_000); // 100M events/month
 
@@ -58,6 +62,25 @@ export function DemoControls({ onOpenMethodology }: Props) {
   const { params, model, setEventsPerMonth, setDollarsPerIter, setModel } =
     useDemoParams();
   const [costDraft, setCostDraft] = useState<string>(params.dollarsPerIter.toFixed(4));
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(COLLAPSE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  function toggleCollapsed(): void {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
+      } catch {
+        /* noop */
+      }
+      return next;
+    });
+  }
 
   // Sync cost draft when the user picks a different model preset
   // (which auto-updates params.dollarsPerIter).
@@ -71,6 +94,18 @@ export function DemoControls({ onOpenMethodology }: Props) {
   const itersPerEventAvg = 1.44;
 
   const modelPreset = MODEL_PRESETS.find((m) => m.id === model);
+
+  // Compact "what's set right now" line shown in the collapsed bar so the
+  // panel stays informative without taking the full two-knob height.
+  const fleetPreset = FLEET_PRESETS.find(
+    (p) => p.eventsPerMonth === params.eventsPerMonth,
+  );
+  const collapsedSummary = [
+    fleetPreset ? fleetPreset.label : "custom",
+    `${fmtEvents(params.eventsPerMonth)} events/mo`,
+    modelPreset ? modelPreset.label : "custom",
+    `${fmtUSD(params.dollarsPerIter)}/iter`,
+  ].join(" · ");
 
   function selectModel(id: ModelId) {
     setModel(id);
@@ -90,7 +125,7 @@ export function DemoControls({ onOpenMethodology }: Props) {
       className="card"
       style={{
         margin: "0 16px 16px",
-        padding: "14px 16px",
+        padding: collapsed ? "10px 16px" : "14px 16px",
         background: "var(--surf-1)",
         border: "1px solid var(--border)",
       }}
@@ -100,38 +135,105 @@ export function DemoControls({ onOpenMethodology }: Props) {
           display: "flex",
           alignItems: "baseline",
           justifyContent: "space-between",
-          marginBottom: 10,
+          gap: 12,
+          marginBottom: collapsed ? 0 : 10,
         }}
       >
-        <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            gap: 12,
+            minWidth: 0,
+            flex: "1 1 auto",
+          }}
+        >
           <span
             className="label"
-            style={{ fontWeight: 600, color: "var(--text-1)", fontSize: 11.5 }}
+            style={{
+              fontWeight: 600,
+              color: "var(--text-1)",
+              fontSize: 11.5,
+              flex: "0 0 auto",
+            }}
           >
             DEMO CONTROLS
           </span>
-          <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>
-            Adjust to project the benchmark dynamics to your scale +
-            pricing assumptions.
+          <span
+            style={{
+              fontSize: 11.5,
+              color: "var(--text-3)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            className={collapsed ? "mono" : undefined}
+          >
+            {collapsed
+              ? collapsedSummary
+              : "Adjust to project the benchmark dynamics to your scale + pricing assumptions."}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={onOpenMethodology}
-          style={{
-            fontSize: 11,
-            color: "var(--accent)",
-            textDecoration: "underline",
-            background: "transparent",
-            padding: 0,
-            cursor: "pointer",
-          }}
-        >
-          ⓘ methodology &amp; sources
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flex: "0 0 auto" }}>
+          {!collapsed && (
+            <button
+              type="button"
+              onClick={onOpenMethodology}
+              style={{
+                fontSize: 11,
+                color: "var(--accent)",
+                textDecoration: "underline",
+                background: "transparent",
+                padding: 0,
+                cursor: "pointer",
+              }}
+            >
+              ⓘ methodology &amp; sources
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? "Expand demo controls" : "Collapse demo controls"}
+            title={collapsed ? "Expand demo controls" : "Collapse demo controls"}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "transparent",
+              border: "none",
+              padding: 2,
+              cursor: "pointer",
+              color: "var(--text-3)",
+              lineHeight: 0,
+            }}
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 12 12"
+              aria-hidden="true"
+              style={{
+                transform: collapsed ? "rotate(180deg)" : "none",
+                transition: "transform 140ms ease",
+              }}
+            >
+              {/* chevron up = collapse upward; flips to point down when collapsed */}
+              <path
+                d="M2.5 7.5 L6 4 L9.5 7.5"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      <div className="demo-controls-grid">
+      <div className="demo-controls-grid" style={{ display: collapsed ? "none" : undefined }}>
         {/* ── Loop events / month ─────────────────────────────────── */}
         <div>
           <div
