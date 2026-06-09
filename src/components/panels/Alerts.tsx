@@ -64,7 +64,7 @@ function AlertsBody({
 
   return (
     <>
-      <div className="card eta-kpi-strip" style={{ padding: 0, marginBottom: 16 }}>
+      <div className="card kpi-strip" style={{ padding: 0, marginBottom: 16 }}>
         {[
           { label: "Active rules", value: fmtInt(enabledCount), sub: `${rules.length} configured` },
           { label: "Sent · 24h", value: fmtInt(sent24), sub: "delivered to webhook" },
@@ -261,8 +261,6 @@ export function describePredicate(r: AlertRule): string {
       return `count(rollback) ${p.operator} ${p.threshold}`;
     case "rollback_rate":
       return `rollback_rate ${p.operator} ${(p.threshold * 100).toFixed(0)}%`;
-    case "gain_margin_min":
-      return `any gain_margin ${p.operator} ${p.threshold}`;
   }
 }
 

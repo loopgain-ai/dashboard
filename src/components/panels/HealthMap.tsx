@@ -331,10 +331,6 @@ function HealthMapBody({
                   <span style={{ color: "var(--text-1)" }}>
                     {hover.tile.abMax != null ? hover.tile.abMax.toFixed(3) : "—"}
                   </span>
-                  &nbsp;· GM{" "}
-                  <span style={{ color: "var(--text-1)" }}>
-                    {hover.tile.gm != null ? hover.tile.gm.toFixed(2) : "—"}
-                  </span>
                 </div>
                 <div style={{ color: "var(--text-3)", fontSize: 10 }}>
                   {fmtAbsTs(hover.tile.ts)}
@@ -356,7 +352,6 @@ interface Tile {
   outcome: string;
   iterations: number;
   abMax: number | null;
-  gm: number | null;
   ts: number;
   weight: number;
   x: number;
@@ -384,7 +379,6 @@ function layout(
       outcome: e.outcome,
       iterations: e.iterations_used,
       abMax: e.profile_max,
-      gm: e.gain_margin,
       ts: e.timestamp_hour * 1000,
       weight,
       x: 0,

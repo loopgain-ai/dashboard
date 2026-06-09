@@ -94,7 +94,6 @@ function RollbacksBody({
       "workload_id",
       "outcome",
       "iterations_used",
-      "gain_margin",
       "profile_max",
       "savings_vs_fixed_cap",
       "library_version",
@@ -107,7 +106,6 @@ function RollbacksBody({
         e.workload_id ?? "",
         e.outcome,
         e.iterations_used,
-        e.gain_margin ?? "",
         e.profile_max ?? "",
         e.savings_vs_fixed_cap ?? "",
         e.library_version,
@@ -219,7 +217,6 @@ function RollbacksBody({
           <div>workload</div>
           <div>trig band</div>
           <div style={{ textAlign: "right" }}>iter</div>
-          <div className="rb-gm" style={{ textAlign: "right" }}>GM</div>
           <div className="rb-abmax" style={{ textAlign: "right" }}>Aβ_max</div>
           <div className="rb-saved" style={{ textAlign: "right" }}>saved</div>
         </div>
@@ -275,21 +272,6 @@ function RollbacksBody({
                   </div>
                   <div className="mono" style={{ textAlign: "right", fontSize: 12, color: "var(--text-1)" }}>
                     {r.iterations_used}
-                  </div>
-                  <div
-                    className="mono rb-gm"
-                    style={{
-                      textAlign: "right",
-                      fontSize: 12,
-                      color:
-                        r.gain_margin != null && r.gain_margin < 1.0
-                          ? "var(--band-osc)"
-                          : r.gain_margin != null && r.gain_margin < 1.2
-                          ? "var(--band-stall)"
-                          : "var(--text-1)",
-                    }}
-                  >
-                    {r.gain_margin != null ? r.gain_margin.toFixed(2) : "—"}
                   </div>
                   <div className="mono rb-abmax" style={{ textAlign: "right", fontSize: 12, color: "var(--text-1)" }}>
                     {r.profile_max != null ? r.profile_max.toFixed(3) : "—"}
@@ -351,10 +333,6 @@ function RollbackDetail({ event, customerId }: { event: LoopEvent; customerId: s
           <div className="label">Aβ_max</div>
           <div className="mono" style={{ color: "var(--text-1)" }}>
             {event.profile_max != null ? event.profile_max.toFixed(4) : "—"}
-          </div>
-          <div className="label">Gain margin</div>
-          <div className="mono" style={{ color: "var(--text-1)" }}>
-            {event.gain_margin != null ? event.gain_margin.toFixed(3) : "—"}
           </div>
           <div className="label">Library</div>
           <div className="mono" style={{ color: "var(--text-1)" }}>

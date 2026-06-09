@@ -488,10 +488,8 @@ function RuleEditor({
       setPredicate({ metric, outcome: "diverged", operator: ">", threshold: 3 });
     } else if (metric === "rollback_count") {
       setPredicate({ metric, operator: ">", threshold: 5 });
-    } else if (metric === "rollback_rate") {
-      setPredicate({ metric, operator: ">", threshold: 0.12 });
     } else {
-      setPredicate({ metric: "gain_margin_min", operator: "<", threshold: 1.0 });
+      setPredicate({ metric: "rollback_rate", operator: ">", threshold: 0.12 });
     }
   }
 
@@ -536,7 +534,6 @@ function RuleEditor({
             <option value="outcome_count">count of outcome</option>
             <option value="rollback_count">count of rollbacks</option>
             <option value="rollback_rate">rollback rate</option>
-            <option value="gain_margin_min">any gain margin</option>
           </select>
           {draft.predicate.metric === "outcome_count" && (
             <select
@@ -567,10 +564,7 @@ function RuleEditor({
             }
             style={{ ...inputStyle, cursor: "pointer", width: 70 }}
           >
-            {(draft.predicate.metric === "gain_margin_min"
-              ? (["<", "<="] as const)
-              : OPERATORS
-            ).map((op) => (
+            {OPERATORS.map((op) => (
               <option key={op} value={op}>
                 {op}
               </option>
@@ -578,13 +572,7 @@ function RuleEditor({
           </select>
           <input
             type="number"
-            step={
-              draft.predicate.metric === "rollback_rate"
-                ? 0.01
-                : draft.predicate.metric === "gain_margin_min"
-                ? 0.1
-                : 1
-            }
+            step={draft.predicate.metric === "rollback_rate" ? 0.01 : 1}
             value={draft.predicate.threshold}
             onChange={(e) =>
               setPredicate({
@@ -741,8 +729,6 @@ function describePredicateInline(p: AlertPredicate): string {
       return `count(rollback) ${p.operator} ${p.threshold}`;
     case "rollback_rate":
       return `rollback_rate ${p.operator} ${(p.threshold * 100).toFixed(0)}%`;
-    case "gain_margin_min":
-      return `any gain_margin ${p.operator} ${p.threshold}`;
   }
 }
 

@@ -67,7 +67,6 @@ function LoopDetailBody({
     () => median(events.map((e) => e.profile_median)),
     [events],
   );
-  const medianGM = useMemo(() => median(events.map((e) => e.gain_margin)), [events]);
 
   const rolling = useMemo(() => {
     const buckets = new Map<number, number[]>();
@@ -146,20 +145,6 @@ function LoopDetailBody({
           {
             label: <>Median A<NoCase>β</NoCase> (window)</>,
             value: medianAB != null ? medianAB.toFixed(3) : "—",
-          },
-          {
-            label: "Latest GM",
-            value: latest.gain_margin != null ? latest.gain_margin.toFixed(2) : "—",
-            color:
-              latest.gain_margin != null && latest.gain_margin < 1.0
-                ? "var(--band-osc)"
-                : latest.gain_margin != null && latest.gain_margin < 1.2
-                ? "var(--band-stall)"
-                : undefined,
-          },
-          {
-            label: "Median GM (window)",
-            value: medianGM != null ? medianGM.toFixed(2) : "—",
           },
           {
             label: "Latest outcome",

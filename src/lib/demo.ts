@@ -13,7 +13,7 @@
 // no demo function ever fetches anything itself.
 //
 // Why this approach over a synthetic generative model:
-//  - Every distribution shape (Aβ, outcomes, GM) traces to a real
+//  - Every distribution shape (Aβ, outcomes) traces to a real
 //    measurement, so a sophisticated visitor can click through to
 //    /benchmark and verify the receipts.
 //  - Only two free parameters need defending — model+token-budget (cost)
@@ -126,7 +126,7 @@ export const DEFAULT_DEMO_PARAMS: DemoParams = {
  *  replacement to match a synthetic 30-day window; volume and cost
  *  numbers get scaled by the visitor's `eventsPerMonth` and applied
  *  with the visitor's `dollarsPerIter`. Aggregate distribution
- *  properties (Aβ medians, GM percentiles) are scale-invariant — they
+ *  properties (Aβ medians, outcome shares) are scale-invariant — they
  *  pass through unchanged. */
 
 /** Deterministic LCG, seeded per render so the same demo params produce
@@ -239,17 +239,6 @@ export function scaleStats(
           event_count_with_actual_spend: Math.round(
             (benchTotals.event_count_with_actual_spend ?? benchEventCount) * f,
           ),
-          // Scale the GM-bearing count by the same factor as event_count so the
-          // GM panel's "stable majority" share stays coherent in the projection
-          // (otherwise event_count scales to millions while the raw GM sample
-          // stays in the hundreds). Omit when the receiver didn't supply it.
-          ...(benchTotals.event_count_with_gain_margin != null
-            ? {
-                event_count_with_gain_margin: Math.round(
-                  benchTotals.event_count_with_gain_margin * f,
-                ),
-              }
-            : {}),
           // Iteration-waste aggregates scale by the same factor as event_count
           // so the Convergence/Waste "no static cap" panels stay coherent in
           // the projection (best-at-iter1 share + grind totals track volume).

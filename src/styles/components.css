@@ -303,26 +303,24 @@
 /* ── Rollbacks table: hide low-priority cols at narrow widths ───────── */
 .rollback-grid {
   display: grid;
-  grid-template-columns: 24px 150px minmax(140px, 1.4fr) 110px 60px 60px 70px 80px;
+  grid-template-columns: 24px 150px minmax(140px, 1.4fr) 110px 60px 70px 80px;
 }
 @media (max-width: 1100px) {
-  .rollback-grid { grid-template-columns: 24px 130px minmax(120px, 1fr) 110px 50px 50px; }
+  .rollback-grid { grid-template-columns: 24px 130px minmax(120px, 1fr) 110px 50px; }
   .rollback-grid > .rb-abmax,
   .rollback-grid > .rb-saved { display: none; }
 }
 @media (max-width: 720px) {
   .rollback-grid { grid-template-columns: 24px minmax(120px, 1fr) 100px 40px; }
-  .rollback-grid > .rb-ts,
-  .rollback-grid > .rb-gm { display: none; }
+  .rollback-grid > .rb-ts { display: none; }
 }
 
-/* ── Loop Detail KPI strip (5-col) + main grid ─────────────────────── */
+/* ── Loop Detail KPI strip (3-col) + main grid ─────────────────────── */
 .loop-kpi-strip {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(3, 1fr);
 }
 @media (max-width: 1100px) {
-  .loop-kpi-strip { grid-template-columns: repeat(3, 1fr); }
   .loop-kpi-strip > div { border-left: 1px solid var(--border) !important; }
   .loop-kpi-strip > div:nth-child(3n+1) { border-left: none !important; }
 }
@@ -367,66 +365,21 @@
   .waste-breakdowns { grid-template-columns: 1fr; }
 }
 
-/* ── Gain Margin: 4-col KPI + 3-col interpretation ─────────────────── */
-.gm-kpi-strip {
+
+/* ── KPI strip (4 cells) ───────────────────────────────────────────── */
+.kpi-strip {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
 }
 @media (max-width: 960px) {
-  .gm-kpi-strip { grid-template-columns: repeat(2, 1fr); }
-  .gm-kpi-strip > div { border-left: 1px solid var(--border) !important; }
-  .gm-kpi-strip > div:nth-child(2n+1) { border-left: none !important; }
+  .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+  .kpi-strip > div { border-left: 1px solid var(--border) !important; }
+  .kpi-strip > div:nth-child(2n+1) { border-left: none !important; }
 }
 @media (max-width: 600px) {
-  .gm-kpi-strip { grid-template-columns: 1fr; }
-  .gm-kpi-strip > div { border-left: none !important; border-top: 1px solid var(--border) !important; }
-  .gm-kpi-strip > div:first-child { border-top: none !important; }
-}
-
-.gm-interp {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
-}
-@media (max-width: 960px) {
-  .gm-interp { grid-template-columns: 1fr; gap: 16px; }
-}
-
-/* ── ETA 2-col (1.6fr 1fr) ─────────────────────────────────────────── */
-.eta-grid {
-  display: grid;
-  grid-template-columns: 1.6fr 1fr;
-  gap: 32px;
-}
-@media (max-width: 960px) {
-  .eta-grid { grid-template-columns: 1fr; gap: 18px; }
-}
-
-/* ── ETA KPI strip (4 cells) — mirrors gm-kpi-strip ────────────────── */
-.eta-kpi-strip {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-}
-@media (max-width: 960px) {
-  .eta-kpi-strip { grid-template-columns: repeat(2, 1fr); }
-  .eta-kpi-strip > div { border-left: 1px solid var(--border) !important; }
-  .eta-kpi-strip > div:nth-child(2n+1) { border-left: none !important; }
-}
-@media (max-width: 600px) {
-  .eta-kpi-strip { grid-template-columns: 1fr; }
-  .eta-kpi-strip > div { border-left: none !important; border-top: 1px solid var(--border) !important; }
-  .eta-kpi-strip > div:first-child { border-top: none !important; }
-}
-
-/* ── ETA bottom row: bias bars + interpretation ────────────────────── */
-.eta-bottom-grid {
-  display: grid;
-  grid-template-columns: 1.5fr 1fr;
-  gap: 16px;
-  margin-top: 16px;
-}
-@media (max-width: 960px) {
-  .eta-bottom-grid { grid-template-columns: 1fr; }
+  .kpi-strip { grid-template-columns: 1fr; }
+  .kpi-strip > div { border-left: none !important; border-top: 1px solid var(--border) !important; }
+  .kpi-strip > div:first-child { border-top: none !important; }
 }
 
 /* ── Empty state install steps (3-col) ─────────────────────────────── */

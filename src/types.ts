@@ -53,12 +53,6 @@ export interface StatsResponse {
     total_actual_dollars_spent?: number | null;
     /** Count of events with actual_dollars_spent populated. */
     event_count_with_actual_spend?: number;
-    /** Count of events with a measurable gain_margin (loops that ran ≥2
-     *  iterations). event_count minus this is the "stable majority" that
-     *  converged on the first attempt — no GM, never neared instability.
-     *  Receiver v3.4+ only; older receivers omit it and the GM panel falls
-     *  back to its scope note without the headline number. */
-    event_count_with_gain_margin?: number;
     /** Iteration-waste aggregates (receiver v3.5+, schema migration 0008).
      *  best_index is the 0-based lowest-error iteration. These drive the
      *  Convergence/Waste "no static cap works" panels; loopgain-verify
@@ -130,7 +124,6 @@ export interface ProfileEvent extends Classification {
   profile_samples: number;
   outcome: Outcome;
   iterations_used: number;
-  gain_margin: number | null;
 }
 
 /** GET /v1/profiles response. */
@@ -147,7 +140,6 @@ export interface LoopEvent extends Classification {
   workload_id: string | null;
   outcome: Outcome;
   iterations_used: number;
-  gain_margin: number | null;
   profile_max: number | null;
   savings_vs_fixed_cap: number | null;
   /** 0-based iteration with the lowest error (argmin of error_history).
@@ -155,11 +147,6 @@ export interface LoopEvent extends Classification {
    *  NULL on events ingested before the column existed. */
   best_index: number | null;
   library_version: string;
-  // Schema v2: first non-NULL eta snapshot captured during the loop, plus
-  // the iteration count when it was captured. Both NULL on v1-era events
-  // or when the library never produced a prediction.
-  first_eta_prediction?: number | null;
-  first_eta_at_iteration?: number | null;
 }
 
 /** GET /v1/events response. */
@@ -176,7 +163,6 @@ export interface EventDetail extends Classification {
   library_version: string;
   outcome: Outcome;
   iterations_used: number;
-  gain_margin: number | null;
   savings_vs_fixed_cap: number | null;
   rollback_triggered: number; // 0 | 1 (D1 boolean storage)
   profile_min: number | null;
@@ -188,8 +174,6 @@ export interface EventDetail extends Classification {
   threshold_stalling: number;
   threshold_oscillating_upper: number;
   smoothing_window: number;
-  first_eta_prediction: number | null;
-  first_eta_at_iteration: number | null;
   per_iteration: PerIteration | null;
   received_at: number;
 }
@@ -226,11 +210,6 @@ export type AlertPredicate =
   | {
       metric: "rollback_rate";
       operator: AlertOperator;
-      threshold: number;
-    }
-  | {
-      metric: "gain_margin_min";
-      operator: "<" | "<=";
       threshold: number;
     };
 
