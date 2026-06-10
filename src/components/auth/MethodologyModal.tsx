@@ -196,7 +196,6 @@ export function MethodologyModal({ open, onClose }: Props) {
             <tbody>
               <Row metric="Outcome distribution (CONV / OSC / DIV)" source="Measured — bench" />
               <Row metric="Aβ distribution (median, p99, per-event)" source="Measured — bench" />
-              <Row metric="Gain margin distribution (median, p10)" source="Measured — bench" />
               <Row metric="Iterations per run, rollback rate" source="Measured — bench" />
               <Row metric="Framework / loop_type / team mix" source="Measured — bench" />
               <Row

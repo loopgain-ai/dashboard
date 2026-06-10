@@ -10,10 +10,8 @@ Live at [dashboard.loopgain.ai](https://dashboard.loopgain.ai) (hosted) or self-
 2. **Loop Health Map** — squarified treemap of recent events, band-colored, filterable by workload or band, with cluster-anomaly detection.
 3. **Convergence Profiles** — per-event `profile_median` over time with band-threshold backgrounds and rolling-median trend.
 4. **Waste Report** — saved-dollars hero, counterfactual baseline, by-workload + by-outcome breakdowns, stacked-area spend timeseries.
-5. **Gain Margin Distribution** — fleet histogram of `GM = 1 / max(Aβ_smooth)` with reference markers at 1.0 / 1.2 / 1.8, per-bucket drill-in.
-6. **Rollback Log** — every divergence-triggered rollback as an expandable audit-trail row; CSV / JSON export with on-the-fly SHA-256 audit hash.
-7. **ETA Accuracy** — predicted-vs-actual iteration calibration scatter, fed by `/v1/calibration` (requires library schema-v2 capture).
-8. **Alerts** — read-only delivery audit log + active-rule summary; rule editing lives in **Settings**.
+5. **Rollback Log** — every divergence-triggered rollback as an expandable audit-trail row; CSV / JSON export with on-the-fly SHA-256 audit hash.
+6. **Alerts** — read-only delivery audit log + active-rule summary; rule editing lives in **Settings**.
 
 Plus a **Loop Detail** drill-down per workload (header KPIs, per-workload convergence chart, recent runs sidebar, per-iteration trajectory scrubbing for v3-schema runs), **Settings** (connection state, cost-per-iter, alert rules editor), an **Empty State** with a three-line Python integration snippet, and a **⌘K command palette** for nav / actions / workload jumps.
 
