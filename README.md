@@ -6,14 +6,14 @@ Live at [dashboard.loopgain.ai](https://dashboard.loopgain.ai) (hosted) or self-
 
 ## Panels
 
-1. **Overview** — fleet `Aβ_median` ring gauge, five-band counts, 30-day savings hero, 24h pulse, KPI quad, recent runs feed.
+1. **Overview** — fleet %-converged ring gauge, five-band counts, 30-day savings hero, 24h pulse, KPI quad, recent runs feed.
 2. **Loop Health Map** — squarified treemap of recent events, band-colored, filterable by workload or band, with cluster-anomaly detection.
 3. **Convergence Profiles** — per-event `profile_median` over time with band-threshold backgrounds and rolling-median trend.
 4. **Waste Report** — saved-dollars hero, counterfactual baseline, by-workload + by-outcome breakdowns, stacked-area spend timeseries.
 5. **Rollback Log** — every divergence-triggered rollback as an expandable audit-trail row; CSV / JSON export with on-the-fly SHA-256 audit hash.
 6. **Alerts** — read-only delivery audit log + active-rule summary; rule editing lives in **Settings**.
 
-Plus a **Loop Detail** drill-down per workload (header KPIs, per-workload convergence chart, recent runs sidebar, per-iteration trajectory scrubbing for v3-schema runs), **Settings** (connection state, cost-per-iter, alert rules editor), an **Empty State** with a three-line Python integration snippet, and a **⌘K command palette** for nav / actions / workload jumps.
+Plus a **Loop Detail** drill-down per workload (header KPIs, per-workload convergence chart, recent runs sidebar, per-iteration trajectory scrubbing for v3+-schema runs), **Settings** (connection state, cost-per-iter, alert rules editor), an **Empty State** with a three-line Python integration snippet, and a **⌘K command palette** for nav / actions / workload jumps.
 
 A filter bar across the top of every data panel scopes by `framework`, `loop_type`, and `team` (populated from the receiver's distinct-values list).
 
@@ -28,7 +28,6 @@ The dashboard supports light & dark themes, cozy / dense density, and a **demo m
                                   ├── GET /v1/profiles
                                   ├── GET /v1/events
                                   ├── GET /v1/event/:id
-                                  ├── GET /v1/calibration
                                   ├── GET /v1/alerts/rules
                                   ├── GET /v1/alerts/deliveries
                                   └── POST/PUT/DELETE /v1/alerts/rules[/:id]
@@ -53,7 +52,7 @@ src/
 ├── types.ts                      wire shapes mirroring the receiver
 ├── lib/
 │   ├── api.ts                    typed fetch client + AuthContext + useApi hook
-│   ├── data-hooks.ts             useStats / useProfiles / useEvents / useCalibration / useAlert*
+│   ├── data-hooks.ts             useStats / useProfiles / useEvents / useAlert*
 │   ├── demo.ts                   deterministic synthetic telemetry
 │   ├── bands.ts                  band semantics, outcome→band mapping
 │   ├── stats.ts                  percentile, histogram, groupBy helpers
