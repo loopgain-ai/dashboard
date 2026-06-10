@@ -2,8 +2,9 @@
 //
 // Rule editing lives in Settings. This panel is a read-only view into what
 // the receiver's scheduled cron evaluator did with those rules: which
-// matched, when they fired, whether the webhook delivered, and a one-line
-// reason on failure.
+// matched, when they fired, whether the delivery landed on its channel
+// (webhook, Slack, or email), and a one-line reason on failure. test_sent /
+// test_failed rows come from the per-rule Test button in Settings.
 
 import { useMemo } from "react";
 import { useAlertDeliveries, useAlertRules } from "../../lib/data-hooks";
@@ -67,7 +68,7 @@ function AlertsBody({
       <div className="card kpi-strip" style={{ padding: 0, marginBottom: 16 }}>
         {[
           { label: "Active rules", value: fmtInt(enabledCount), sub: `${rules.length} configured` },
-          { label: "Sent · 24h", value: fmtInt(sent24), sub: "delivered to webhook" },
+          { label: "Sent · 24h", value: fmtInt(sent24), sub: "delivered (webhook · slack · email)" },
           {
             label: "Failed · 24h",
             value: fmtInt(failed24),
@@ -147,9 +148,9 @@ function AlertsBody({
 
 function DeliveryRow({ d }: { d: AlertDelivery }) {
   const color =
-    d.delivery_status === "sent"
+    d.delivery_status === "sent" || d.delivery_status === "test_sent"
       ? "var(--band-conv)"
-      : d.delivery_status === "failed"
+      : d.delivery_status === "failed" || d.delivery_status === "test_failed"
       ? "var(--band-osc)"
       : "var(--text-3)";
   const ms = d.fired_at * 1000;
@@ -192,11 +193,19 @@ function DeliveryRow({ d }: { d: AlertDelivery }) {
               <span>{d.delivery_status_code}</span>
             </>
           )}
-          {" · matched "}
-          <span style={{ color: "var(--text-2)" }}>
-            {Number.isInteger(d.match_value) ? d.match_value : d.match_value.toFixed(3)}
-          </span>{" "}
-          ({fmtInt(d.match_count)} events)
+          {/* Test fires carry a synthetic match_value of -1 — render the
+              row as a connectivity test rather than a matched predicate. */}
+          {d.delivery_status === "test_sent" || d.delivery_status === "test_failed" ? (
+            <> · manual test fire</>
+          ) : (
+            <>
+              {" · matched "}
+              <span style={{ color: "var(--text-2)" }}>
+                {Number.isInteger(d.match_value) ? d.match_value : d.match_value.toFixed(3)}
+              </span>{" "}
+              ({fmtInt(d.match_count)} events)
+            </>
+          )}
           {d.delivery_error && (
             <>
               {" · "}
@@ -245,7 +254,8 @@ function RuleSummary({ r }: { r: AlertRule }) {
         )}
       </div>
       <div className="mono" style={{ fontSize: 10, color: "var(--text-4)", marginTop: 2 }}>
-        window {fmtSeconds(r.window_seconds)} · cooldown {fmtSeconds(r.cooldown_seconds)}
+        via {r.action_type} · window {fmtSeconds(r.window_seconds)} · cooldown{" "}
+        {fmtSeconds(r.cooldown_seconds)}
         {r.last_fired_at && ` · last fired ${fmtRel(r.last_fired_at * 1000)}`}
       </div>
     </div>

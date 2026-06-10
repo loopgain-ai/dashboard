@@ -1,18 +1,22 @@
 // Settings panel — connection info, alert-rule editor (server-backed via
 // the receiver's /v1/alerts/rules CRUD endpoints), cost-per-iteration
-// default. The cron evaluator on the receiver fires webhook deliveries
-// every minute against any rule whose predicate matches.
+// default. The cron evaluator on the receiver fires the rule's delivery
+// channel (webhook, Slack, or email) every minute against any rule whose
+// predicate matches. Each rule row has a Test button that fires the real
+// delivery path once with a marked test payload.
 
 import { useEffect, useMemo, useState } from "react";
 import {
   createAlertRule,
   deleteAlertRule,
+  testAlertRule,
   updateAlertRule,
   useAuth,
 } from "../../lib/api";
 import { useAlertRules } from "../../lib/data-hooks";
 import { Chip, Icon, PanelHeader } from "../primitives";
 import type {
+  AlertActionType,
   AlertOperator,
   AlertPredicate,
   AlertRule,
@@ -202,6 +206,8 @@ function AlertRulesCard() {
   const [draft, setDraft] = useState<AlertRulePayload>(() => defaultPayload());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Per-rule transient result of the last Test fire ("…" while in flight).
+  const [testResults, setTestResults] = useState<Record<number, string>>({});
 
   const rules = useMemo(() => {
     if (state.status === "ok") return state.data.rules;
@@ -267,6 +273,26 @@ function AlertRulesCard() {
       refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function fireTest(r: AlertRule) {
+    if (!config || demo) return;
+    setTestResults((m) => ({ ...m, [r.id]: "testing…" }));
+    try {
+      const res = await testAlertRule(config, r.id);
+      setTestResults((m) => ({
+        ...m,
+        [r.id]:
+          res.test === "sent"
+            ? "test delivered ✓"
+            : `test failed${res.error ? ` · ${res.error}` : ""}`,
+      }));
+    } catch (e) {
+      setTestResults((m) => ({
+        ...m,
+        [r.id]: e instanceof Error ? e.message : String(e),
+      }));
     }
   }
 
@@ -340,6 +366,8 @@ function AlertRulesCard() {
             onEdit={() => startEdit(r)}
             onDelete={() => remove(r.id)}
             onToggle={() => toggleEnabled(r)}
+            onTest={() => fireTest(r)}
+            testResult={testResults[r.id]}
             disabled={demo}
           />
         ),
@@ -364,12 +392,16 @@ function RuleRow({
   onEdit,
   onDelete,
   onToggle,
+  onTest,
+  testResult,
   disabled,
 }: {
   r: AlertRule;
   onEdit: () => void;
   onDelete: () => void;
   onToggle: () => void;
+  onTest: () => void;
+  testResult?: string;
   disabled: boolean;
 }) {
   return (
@@ -378,7 +410,7 @@ function RuleRow({
         padding: "12px 14px",
         borderBottom: "1px solid var(--border)",
         display: "grid",
-        gridTemplateColumns: "auto 1fr auto auto",
+        gridTemplateColumns: "auto 1fr auto auto auto",
         gap: 14,
         alignItems: "center",
       }}
@@ -427,9 +459,42 @@ function RuleRow({
           {fmtSecondsShort(r.cooldown_seconds)}
         </div>
         <div className="mono" style={{ fontSize: 10, color: "var(--text-4)", marginTop: 2 }}>
-          → {r.action_url}
+          → {r.action_type} · {r.action_url}
+          {testResult && (
+            <>
+              {" · "}
+              <span
+                style={{
+                  color: testResult.startsWith("test delivered")
+                    ? "var(--band-conv)"
+                    : testResult === "testing…"
+                    ? "var(--text-3)"
+                    : "var(--band-osc)",
+                }}
+              >
+                {testResult}
+              </span>
+            </>
+          )}
         </div>
       </div>
+      <button
+        type="button"
+        onClick={disabled ? undefined : onTest}
+        disabled={disabled}
+        title="Send a test delivery through this rule's channel"
+        style={{
+          color: "var(--text-2)",
+          padding: "4px 8px",
+          borderRadius: 4,
+          fontSize: 11,
+          fontFamily: "var(--mono)",
+          opacity: disabled ? 0.5 : 1,
+          cursor: disabled ? "not-allowed" : "pointer",
+        }}
+      >
+        test
+      </button>
       <button
         type="button"
         onClick={onEdit}
@@ -492,6 +557,20 @@ function RuleEditor({
       setPredicate({ metric: "rollback_rate", operator: ">", threshold: 0.12 });
     }
   }
+  function setActionType(action_type: AlertActionType) {
+    // The receiver enforces a 300s cooldown floor on email rules (the cron
+    // runs every minute; the floor keeps an inbox un-floodable). Bump a
+    // shorter cooldown rather than letting the save 400.
+    const cooldown = draft.cooldown_seconds ?? 600;
+    setDraft({
+      ...draft,
+      action_type,
+      action_url: "",
+      cooldown_seconds:
+        action_type === "email" && cooldown < 300 ? 600 : draft.cooldown_seconds,
+    });
+  }
+  const target = TARGET_FIELDS[draft.action_type];
 
   return (
     <div
@@ -606,7 +685,10 @@ function RuleEditor({
           }
           style={{ ...inputStyle, cursor: "pointer", maxWidth: 200 }}
         >
-          <option value={0}>none (always re-fire)</option>
+          {/* Email rules carry a server-enforced 300s cooldown floor. */}
+          {draft.action_type !== "email" && (
+            <option value={0}>none (always re-fire)</option>
+          )}
           <option value={300}>5 minutes</option>
           <option value={600}>10 minutes</option>
           <option value={1800}>30 minutes</option>
@@ -620,15 +702,39 @@ function RuleEditor({
           onChange={(f) => setDraft({ ...draft, filter: f })}
         />
 
-        <div className="label">Webhook URL</div>
+        <div className="label">Notify via</div>
+        <select
+          value={draft.action_type}
+          onChange={(e) => setActionType(e.target.value as AlertActionType)}
+          style={{ ...inputStyle, cursor: "pointer", maxWidth: 200 }}
+        >
+          <option value="webhook">webhook (signed POST)</option>
+          <option value="slack">Slack</option>
+          <option value="email">email</option>
+        </select>
+
+        <div className="label">{target.label}</div>
         <input
-          type="url"
+          type={target.inputType}
           value={draft.action_url}
-          placeholder="https://hooks.your-domain.com/loopgain"
+          placeholder={target.placeholder}
           onChange={(e) => setDraft({ ...draft, action_url: e.target.value })}
           style={inputStyle}
         />
       </div>
+      {target.hint && (
+        <p
+          style={{
+            fontSize: 11,
+            color: "var(--text-3)",
+            lineHeight: 1.5,
+            margin: "10px 0 0",
+            maxWidth: 760,
+          }}
+        >
+          {target.hint}
+        </p>
+      )}
       <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
         <button
           type="button"
@@ -720,6 +826,32 @@ function FilterEditor({
     </div>
   );
 }
+
+// Per-channel target-field copy. `action_url` doubles as the channel target
+// on the receiver (webhook URL / Slack hook URL / email address).
+const TARGET_FIELDS: Record<
+  AlertActionType,
+  { label: string; placeholder: string; inputType: "url" | "email"; hint: string | null }
+> = {
+  webhook: {
+    label: "Webhook URL",
+    placeholder: "https://hooks.your-domain.com/loopgain",
+    inputType: "url",
+    hint: null,
+  },
+  slack: {
+    label: "Slack webhook URL",
+    placeholder: "https://hooks.slack.com/services/T000/B000/XXXX",
+    inputType: "url",
+    hint: "Create an incoming webhook in your Slack workspace (Apps → Incoming Webhooks) and paste its URL. Deliveries are unsigned — the URL itself is the credential.",
+  },
+  email: {
+    label: "Email address",
+    placeholder: "alerts@yourcompany.com",
+    inputType: "email",
+    hint: "Sent from alerts@loopgain.ai. Email rules have a 5-minute cooldown floor and a 50-per-day cap per workspace.",
+  },
+};
 
 function describePredicateInline(p: AlertPredicate): string {
   switch (p.metric) {

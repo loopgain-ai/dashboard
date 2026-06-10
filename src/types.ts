@@ -220,6 +220,10 @@ export interface AlertFilter {
   team?: string | null;
 }
 
+// Delivery channels. `action_url` is the channel target: a webhook URL, a
+// Slack incoming-webhook URL, or (for "email") a bare email address.
+export type AlertActionType = "webhook" | "slack" | "email";
+
 export interface AlertRule {
   id: number;
   name: string;
@@ -228,7 +232,7 @@ export interface AlertRule {
   filter: AlertFilter | null;
   window_seconds: number;
   cooldown_seconds: number;
-  action_type: "webhook";
+  action_type: AlertActionType;
   action_url: string;
   created_at: number;
   updated_at: number;
@@ -242,7 +246,7 @@ export interface AlertRulePayload {
   filter?: AlertFilter | null;
   window_seconds: number;
   cooldown_seconds?: number;
-  action_type: "webhook";
+  action_type: AlertActionType;
   action_url: string;
   action_secret?: string | null;
 }
@@ -262,9 +266,23 @@ export interface AlertDelivery {
   fired_at: number;
   match_value: number;
   match_count: number;
-  delivery_status: "sent" | "failed" | "skipped_cooldown";
+  // test_sent / test_failed rows come from POST /v1/alerts/rules/:id/test
+  // (the dashboard's per-rule Test button); they never consume cooldown.
+  delivery_status:
+    | "sent"
+    | "failed"
+    | "skipped_cooldown"
+    | "test_sent"
+    | "test_failed";
   delivery_status_code: number | null;
   delivery_error: string | null;
+}
+
+// Response of POST /v1/alerts/rules/:id/test.
+export interface AlertTestResponse {
+  test: "sent" | "failed";
+  status_code: number | null;
+  error: string | null;
 }
 
 export interface AlertDeliveriesResponse {

@@ -19,6 +19,7 @@ import type {
   AlertRulePayload,
   AlertRuleResponse,
   AlertRulesResponse,
+  AlertTestResponse,
   Config,
   EventDetailResponse,
   EventsResponse,
@@ -376,6 +377,21 @@ export function deleteAlertRule(
     c.token,
     `/v1/alerts/rules/${id}`,
     "DELETE",
+  );
+}
+
+// Fire the rule's delivery channel once with a marked test payload. The
+// receiver records the result in the deliveries audit trail as
+// test_sent/test_failed; the rule's cooldown is not consumed.
+export function testAlertRule(
+  c: Config,
+  id: number,
+): Promise<AlertTestResponse> {
+  return apiSend<AlertTestResponse>(
+    c.endpoint,
+    c.token,
+    `/v1/alerts/rules/${id}/test`,
+    "POST",
   );
 }
 

@@ -13,7 +13,7 @@ Live at [dashboard.loopgain.ai](https://dashboard.loopgain.ai) (hosted) or self-
 5. **Rollback Log** — every divergence-triggered rollback as an expandable audit-trail row; CSV / JSON export with on-the-fly SHA-256 audit hash.
 6. **Alerts** — read-only delivery audit log + active-rule summary; rule editing lives in **Settings**.
 
-Plus a **Loop Detail** drill-down per workload (header KPIs, per-workload convergence chart, recent runs sidebar, per-iteration trajectory scrubbing for v3+-schema runs), **Settings** (connection state, cost-per-iter, alert rules editor), an **Empty State** with a three-line Python integration snippet, and a **⌘K command palette** for nav / actions / workload jumps.
+Plus a **Loop Detail** drill-down per workload (header KPIs, per-workload convergence chart, recent runs sidebar, per-iteration trajectory scrubbing for v3+-schema runs), **Settings** (connection state, cost-per-iter, alert rules editor with **webhook / Slack / email** delivery channels and a per-rule **Test** button that fires the real delivery path once), an **Empty State** with a three-line Python integration snippet, and a **⌘K command palette** for nav / actions / workload jumps.
 
 A filter bar across the top of every data panel scopes by `framework`, `loop_type`, and `team` (populated from the receiver's distinct-values list).
 
@@ -30,7 +30,8 @@ The dashboard supports light & dark themes, cozy / dense density, and a **demo m
                                   ├── GET /v1/event/:id
                                   ├── GET /v1/alerts/rules
                                   ├── GET /v1/alerts/deliveries
-                                  └── POST/PUT/DELETE /v1/alerts/rules[/:id]
+                                  ├── POST/PUT/DELETE /v1/alerts/rules[/:id]
+                                  └── POST /v1/alerts/rules/:id/test
 ```
 
 Fully client-side. The user's bearer token lives in `localStorage` and is sent only to the configured endpoint. No backend, no cookies, no third-party scripts, no telemetry of its own.
