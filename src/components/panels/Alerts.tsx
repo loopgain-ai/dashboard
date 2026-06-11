@@ -7,6 +7,7 @@
 // test_failed rows come from the per-rule Test button in Settings.
 
 import { useMemo } from "react";
+import { useAuth } from "../../lib/api";
 import { useAlertDeliveries, useAlertRules } from "../../lib/data-hooks";
 import { Chip, KPI, PanelHeader } from "../primitives";
 import { Loaded } from "./PanelState";
@@ -19,12 +20,34 @@ interface Props {
 }
 
 export function Alerts({ setRoute }: Props) {
+  const { demo } = useAuth();
   const rules = useAlertRules();
   const deliveries = useAlertDeliveries({ pollMs: 30_000 });
 
   return (
     <div style={{ padding: 24 }}>
       <PanelHeader title="Alerts" />
+
+      {demo && (
+        <div
+          style={{
+            padding: "10px 14px",
+            background: "color-mix(in oklab, var(--band-stall) 8%, transparent)",
+            border: "1px solid color-mix(in oklab, var(--band-stall) 25%, transparent)",
+            borderRadius: 5,
+            marginBottom: 16,
+            fontSize: 11.5,
+            color: "var(--text-2)",
+          }}
+        >
+          <span className="mono" style={{ color: "var(--band-stall)" }}>
+            demo mode
+          </span>{" "}
+          · example configuration — these rules and deliveries illustrate the
+          three channels (webhook · Slack · email) and the audit-trail states;
+          they are not fires from the benchmark data.
+        </div>
+      )}
 
       <Loaded state={deliveries.state}>
         {(d) => (

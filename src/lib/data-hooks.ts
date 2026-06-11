@@ -30,6 +30,8 @@ import {
 import { useFilters } from "./filters";
 import { useDemoParams } from "./demo-params";
 import {
+  demoAlertDeliveries,
+  demoAlertRules,
   scaleEvents,
   scaleProfiles,
   scaleStats,
@@ -220,9 +222,16 @@ export function useAlertRules(
     [],
     {
       ...opts,
-      // Alert rules pass through unchanged in demo mode — they're a
-      // tenant-config concept, not a volume/cost concept.
-      benchLoader: bench || demo ? (signal) => getAlertRulesBench(signal) : undefined,
+      // Bench mode passes through the real (empty) bench tenant — the
+      // /benchmark view is provenance-pure. Demo mode serves the example
+      // rule fixtures instead: the bench tenant never configured alerts,
+      // so pass-through left the feature invisible. See demo.ts for the
+      // honesty rationale (rules are config, not measurement).
+      benchLoader: bench
+        ? (signal) => getAlertRulesBench(signal)
+        : demo
+        ? async () => demoAlertRules()
+        : undefined,
     },
   );
 }
@@ -236,9 +245,13 @@ export function useAlertDeliveries(
     [],
     {
       ...opts,
-      // Alert deliveries pass through unchanged in demo mode — see above.
-      benchLoader:
-        bench || demo ? (signal) => getAlertDeliveriesBench(signal) : undefined,
+      // Bench: real pass-through; demo: example audit-trail fixtures —
+      // see useAlertRules above and demo.ts.
+      benchLoader: bench
+        ? (signal) => getAlertDeliveriesBench(signal)
+        : demo
+        ? async () => demoAlertDeliveries()
+        : undefined,
     },
   );
 }
