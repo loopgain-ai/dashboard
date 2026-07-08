@@ -410,14 +410,14 @@ function WasteBody({
                   fontSize: 9.5,
                   padding: "2px 6px",
                   borderRadius: 3,
-                  background: hasActualSpend
+                  background: hasActualSavings
                     ? "color-mix(in oklab, var(--band-fast) 18%, transparent)"
                     : "var(--surf-3)",
-                  color: hasActualSpend ? "var(--band-fast)" : "var(--text-3)",
+                  color: hasActualSavings ? "var(--band-fast)" : "var(--text-3)",
                   letterSpacing: "0.04em",
                 }}
               >
-                {hasActualSpend
+                {hasActualSavings
                   ? "MEASURED · PAIRED BASELINE"
                   : `EXTRAPOLATED · $${costPerIter.toFixed(2)}/ITER`}
               </span>
@@ -434,7 +434,7 @@ function WasteBody({
                 marginTop: 6,
               }}
             >
-              {fmtUSD(counterfactual, { cents: hasActualSpend })}
+              {fmtUSD(counterfactual, { cents: hasActualSavings })}
             </div>
           </div>
           <div>
