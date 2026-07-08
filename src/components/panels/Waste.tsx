@@ -24,12 +24,19 @@ const OUTCOME_COLOR: Record<string, string> = {
 interface Props {
   costPerIter: number;
   setCostPerIter: (n: number) => void;
+  includeCalibration?: boolean;
   pollMs?: number;
   sinceHours?: number;
 }
 
-export function Waste({ costPerIter, setCostPerIter, pollMs, sinceHours }: Props) {
-  const stats = useStats({ pollMs });
+export function Waste({
+  costPerIter,
+  setCostPerIter,
+  includeCalibration,
+  pollMs,
+  sinceHours,
+}: Props) {
+  const stats = useStats({ pollMs, includeCalibration });
   const events = useEvents({ pollMs, sinceHours });
   return (
     <div style={{ padding: 24 }}>

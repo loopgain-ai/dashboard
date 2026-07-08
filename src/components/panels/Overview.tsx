@@ -75,13 +75,21 @@ const OUTCOME_CELLS: ReadonlyArray<OutcomeCell> = [
 interface Props {
   setRoute: (r: RouteId) => void;
   costPerIter: number;
+  includeCalibration?: boolean;
   pollMs?: number;
   sinceHours?: number;
   timeRange: TimeRange;
 }
 
-export function Overview({ setRoute, costPerIter, pollMs, sinceHours, timeRange }: Props) {
-  const stats = useStats({ pollMs });
+export function Overview({
+  setRoute,
+  costPerIter,
+  includeCalibration,
+  pollMs,
+  sinceHours,
+  timeRange,
+}: Props) {
+  const stats = useStats({ pollMs, includeCalibration });
   const events = useEvents({ pollMs, sinceHours });
   return (
     <div style={{ padding: 24, maxWidth: 1400, margin: "0 auto" }}>

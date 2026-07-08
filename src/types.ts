@@ -96,6 +96,17 @@ export interface StatsResponse {
       actual_dollars_saved: number | null;
     }>;
   };
+  /** Receiver v0.3.6+ (2026-07-07): count of team="calibration" rows left
+   *  out of every aggregate above by default — runs deliberately forced
+   *  past their real stop signal to measure a counterfactual, which would
+   *  otherwise skew "what LoopGain actually saved me". 0 when
+   *  calibration_included is true (nothing was excluded) or when the
+   *  tenant has no calibration-tagged rows. Older receivers omit this
+   *  field entirely. */
+  calibration_excluded?: number;
+  /** True when this response was fetched with include_calibration=true —
+   *  i.e. calibration rows ARE mixed into the aggregates above. */
+  calibration_included?: boolean;
 }
 
 /** Classification labels (schema v3). All optional, all opaque strings. */

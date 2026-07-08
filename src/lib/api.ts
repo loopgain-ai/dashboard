@@ -270,8 +270,18 @@ export function getHealth(endpoint: string, signal?: AbortSignal): Promise<Healt
     });
 }
 
-export function getStats(c: Config, signal?: AbortSignal): Promise<StatsResponse> {
-  return apiGet<StatsResponse>(c.endpoint, c.token, "/v1/stats", undefined, signal);
+export function getStats(
+  c: Config,
+  opts: { includeCalibration?: boolean } = {},
+  signal?: AbortSignal,
+): Promise<StatsResponse> {
+  return apiGet<StatsResponse>(
+    c.endpoint,
+    c.token,
+    "/v1/stats",
+    opts.includeCalibration ? { include_calibration: "true" } : undefined,
+    signal,
+  );
 }
 
 export function getProfiles(

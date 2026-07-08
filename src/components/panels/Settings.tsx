@@ -13,7 +13,7 @@ import {
   updateAlertRule,
   useAuth,
 } from "../../lib/api";
-import { useAlertRules } from "../../lib/data-hooks";
+import { useAlertRules, useStats } from "../../lib/data-hooks";
 import { Chip, Icon, PanelHeader } from "../primitives";
 import type {
   AlertActionType,
@@ -79,9 +79,16 @@ function computeCost(p: ModelPreset, inTok: number, outTok: number): number {
 interface Props {
   costPerIter: number;
   setCostPerIter: (n: number) => void;
+  includeCalibration: boolean;
+  setIncludeCalibration: (v: boolean) => void;
 }
 
-export function Settings({ costPerIter, setCostPerIter }: Props) {
+export function Settings({
+  costPerIter,
+  setCostPerIter,
+  includeCalibration,
+  setIncludeCalibration,
+}: Props) {
   const { config, demo, connection, disconnect } = useAuth();
 
   return (
@@ -139,6 +146,11 @@ export function Settings({ costPerIter, setCostPerIter }: Props) {
       {!demo && <RotateTokenNotice />}
 
       <CostPerIterCard costPerIter={costPerIter} setCostPerIter={setCostPerIter} />
+
+      <CalibrationCard
+        includeCalibration={includeCalibration}
+        setIncludeCalibration={setIncludeCalibration}
+      />
 
       <AlertRulesCard />
     </div>
@@ -1057,6 +1069,99 @@ function CostPerIterCard({
             these from a sample of real iterations for a credible Waste Report.
           </p>
         </details>
+      )}
+    </div>
+  );
+}
+
+// ── Calibration runs ──────────────────────────────────────────────────
+//
+// Runs tagged team="calibration" deliberately ignore their own real stop
+// signal to measure a counterfactual (see loopgain-verify's
+// dash.calibration_exclusion and loopgain-telemetry-receiver's
+// CALIBRATION_TEAM). They're real telemetry, kept forever, but excluded
+// from every dashboard aggregate by default so they don't skew "what
+// LoopGain actually saved me". This toggle is the one escape hatch —
+// mainly for inspecting the calibration sample itself, not everyday use.
+
+function CalibrationCard({
+  includeCalibration,
+  setIncludeCalibration,
+}: {
+  includeCalibration: boolean;
+  setIncludeCalibration: (v: boolean) => void;
+}) {
+  // Always reads the DEFAULT (excluded) view here, regardless of the
+  // toggle's own state, so "N currently hidden" stays meaningful even
+  // while the toggle is on.
+  const { state } = useStats({ includeCalibration: false });
+  const excluded = state.status === "ok" ? state.data.calibration_excluded ?? 0 : null;
+
+  return (
+    <div className="card" style={{ marginBottom: 16, padding: 18 }}>
+      <div className="label" style={{ marginBottom: 10 }}>
+        Calibration runs
+      </div>
+      <p style={{ fontSize: 12, color: "var(--text-3)", lineHeight: 1.5, marginTop: 0, marginBottom: 14 }}>
+        Runs deliberately forced past their real stop signal to measure what the
+        skipped work would have cost — not representative of normal LoopGain
+        behavior. Excluded from every number on this dashboard by default.
+        {excluded !== null && excluded > 0 && (
+          <>
+            {" "}
+            <span className="mono" style={{ color: "var(--text-2)" }}>
+              {excluded} currently hidden.
+            </span>
+          </>
+        )}
+      </p>
+      <label
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          cursor: "pointer",
+          userSelect: "none",
+          width: "fit-content",
+        }}
+      >
+        <button
+          type="button"
+          role="switch"
+          aria-checked={includeCalibration}
+          onClick={() => setIncludeCalibration(!includeCalibration)}
+          style={{
+            width: 30,
+            height: 16,
+            borderRadius: 8,
+            background: includeCalibration ? "var(--accent)" : "var(--surf-3)",
+            position: "relative",
+            border: "none",
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          <span
+            style={{
+              position: "absolute",
+              top: 2,
+              left: includeCalibration ? 16 : 2,
+              width: 12,
+              height: 12,
+              borderRadius: 6,
+              background: "#fff",
+            }}
+          />
+        </button>
+        <span className="mono" style={{ fontSize: 12, color: "var(--text-1)" }}>
+          Include calibration runs in dashboard numbers
+        </span>
+      </label>
+      {includeCalibration && (
+        <p style={{ fontSize: 11, color: "var(--band-stall)", lineHeight: 1.5, margin: "10px 0 0" }}>
+          On — every panel now mixes calibration runs into its totals. This will
+          skew savings/spend numbers upward; turn off for a representative view.
+        </p>
       )}
     </div>
   );

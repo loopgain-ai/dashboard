@@ -39,6 +39,7 @@ import { useAuth } from "./lib/api";
 
 const THEME_KEY = "loopgain-dashboard-theme";
 const COST_KEY = "loopgain-dashboard-cost-per-iter";
+const INCLUDE_CALIBRATION_KEY = "loopgain-dashboard-include-calibration";
 const BENCH_BANNER_DISMISSED_KEY = "loopgain-bench-banner-dismissed";
 const DEMO_BANNER_DISMISSED_KEY = "loopgain-demo-banner-dismissed";
 
@@ -55,6 +56,12 @@ function loadTheme(): Theme {
 function loadCost(): number {
   const v = Number(localStorage.getItem(COST_KEY));
   return Number.isFinite(v) && v > 0 ? v : 0.08;
+}
+// Default false, matching the receiver's own safe default (calibration
+// rows — deliberate runs that ignore their own real stop signal to
+// measure a counterfactual — stay out of the aggregates unless asked for).
+function loadIncludeCalibration(): boolean {
+  return localStorage.getItem(INCLUDE_CALIBRATION_KEY) === "true";
 }
 
 export function App() {
@@ -93,10 +100,18 @@ function AppInner() {
   const [connectOpen, setConnectOpen] = useState(false);
   const [methodologyOpen, setMethodologyOpen] = useState(false);
   const [costPerIter, setCostPerIterState] = useState(() => loadCost());
+  const [includeCalibration, setIncludeCalibrationState] = useState(
+    () => loadIncludeCalibration(),
+  );
 
   function setCostPerIter(n: number): void {
     setCostPerIterState(n);
     localStorage.setItem(COST_KEY, String(n));
+  }
+
+  function setIncludeCalibration(v: boolean): void {
+    setIncludeCalibrationState(v);
+    localStorage.setItem(INCLUDE_CALIBRATION_KEY, String(v));
   }
 
   useEffect(() => {
@@ -128,7 +143,7 @@ function AppInner() {
   const sinceHours = timeRangeHours(timeRange) ?? undefined;
 
   // ── Workloads for palette ───────────────────────────────────────────
-  const stats = useStats({ pollMs });
+  const stats = useStats({ pollMs, includeCalibration });
   const workloads =
     stats.state.status === "ok"
       ? stats.state.data.workloads
@@ -201,6 +216,7 @@ function AppInner() {
           <Overview
             setRoute={setRoute}
             costPerIter={costPerIter}
+            includeCalibration={includeCalibration}
             pollMs={pollMs}
             sinceHours={sinceHours}
             timeRange={timeRange}
@@ -215,6 +231,7 @@ function AppInner() {
           <Waste
             costPerIter={costPerIter}
             setCostPerIter={setCostPerIter}
+            includeCalibration={includeCalibration}
             pollMs={pollMs}
             sinceHours={sinceHours}
           />
@@ -224,7 +241,14 @@ function AppInner() {
       case "alerts":
         return <Alerts setRoute={setRoute} />;
       case "settings":
-        return <Settings costPerIter={costPerIter} setCostPerIter={setCostPerIter} />;
+        return (
+          <Settings
+            costPerIter={costPerIter}
+            setCostPerIter={setCostPerIter}
+            includeCalibration={includeCalibration}
+            setIncludeCalibration={setIncludeCalibration}
+          />
+        );
       case "empty":
         return <EmptyState openConnect={() => setConnectOpen(true)} />;
       default:
@@ -232,13 +256,14 @@ function AppInner() {
           <Overview
             setRoute={setRoute}
             costPerIter={costPerIter}
+            includeCalibration={includeCalibration}
             pollMs={pollMs}
             sinceHours={sinceHours}
             timeRange={timeRange}
           />
         );
     }
-  }, [isAuthed, route, costPerIter, pollMs, sinceHours, timeRange]);
+  }, [isAuthed, route, costPerIter, includeCalibration, pollMs, sinceHours, timeRange]);
 
   return (
     <div style={{ display: "flex", height: "100vh", background: "var(--bg-0)" }}>

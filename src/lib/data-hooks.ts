@@ -45,15 +45,23 @@ import type {
   StatsResponse,
 } from "../types";
 
-export function useStats(opts: { pollMs?: number } = {}): {
+export function useStats(
+  opts: { pollMs?: number; includeCalibration?: boolean } = {},
+): {
   state: LoadState<StatsResponse>;
   refresh: () => void;
 } {
   const { demo, bench } = useAuth();
   const { params } = useDemoParams();
   return useApi<StatsResponse>(
-    demo || bench ? null : (c, signal) => getStats(c, signal),
-    [demo ? params.eventsPerMonth : 0, demo ? params.dollarsPerIter : 0],
+    demo || bench
+      ? null
+      : (c, signal) => getStats(c, { includeCalibration: opts.includeCalibration }, signal),
+    [
+      demo ? params.eventsPerMonth : 0,
+      demo ? params.dollarsPerIter : 0,
+      opts.includeCalibration ?? false,
+    ],
     {
       ...opts,
       benchLoader: bench
