@@ -118,6 +118,27 @@ dialog::backdrop {
     transform: rotate(360deg);
   }
 }
+
+/* Live-replay entrance: a recorded run arriving in the Recent-runs feed
+   (demo mode). Plays once on mount. */
+@keyframes replay-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+    background: color-mix(in oklab, var(--accent) 14%, transparent);
+  }
+  60% {
+    background: color-mix(in oklab, var(--accent) 10%, transparent);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    background: transparent;
+  }
+}
+.replay-enter {
+  animation: replay-enter 0.9s ease-out;
+}
 .spin {
   animation: spin 1.2s linear infinite;
 }

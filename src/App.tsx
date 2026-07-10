@@ -9,6 +9,7 @@ import { version as APP_VERSION } from "../package.json";
 import { AuthContext, useAuthProvider } from "./lib/api";
 import { FilterContext, useFiltersProvider } from "./lib/filters";
 import { DemoParamsContext, useDemoParams, useDemoParamsProvider } from "./lib/demo-params";
+import { DemoReplayContext, useDemoReplayProvider } from "./lib/demo-replay";
 import { useStats } from "./lib/data-hooks";
 import { ConnectDialog } from "./components/auth/ConnectDialog";
 import { MethodologyModal } from "./components/auth/MethodologyModal";
@@ -72,10 +73,21 @@ export function App() {
     <AuthContext.Provider value={auth}>
       <FilterContext.Provider value={filters}>
         <DemoParamsContext.Provider value={demoParams}>
-          <AppInner />
+          <DemoReplayHost />
         </DemoParamsContext.Provider>
       </FilterContext.Provider>
     </AuthContext.Provider>
+  );
+}
+
+/** Separate host so useDemoReplayProvider can read AuthContext (demo flag)
+ *  from the providers above it. Replay is a no-op outside demo mode. */
+function DemoReplayHost() {
+  const replay = useDemoReplayProvider();
+  return (
+    <DemoReplayContext.Provider value={replay}>
+      <AppInner />
+    </DemoReplayContext.Provider>
   );
 }
 
@@ -452,7 +464,8 @@ function DemoBanner({
           >
             /benchmark
           </a>
-          .{" "}
+          . The Recent-runs feed replays real recorded runs from that
+          benchmark — recorded measurements, not live inference.{" "}
           <button
             type="button"
             onClick={onOpenMethodology}

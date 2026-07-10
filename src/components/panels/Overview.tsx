@@ -1,6 +1,6 @@
 // Overview — fleet health at a glance, computed from real /v1/stats + /v1/events.
 
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useEventDetail, useEvents, useStats } from "../../lib/data-hooks";
 import { bandFromEvent } from "../../lib/bands";
 import { fmtRel, fmtTime, fmtUSD, fmtInt, fmtCompact, fmtPct } from "../../lib/format";
@@ -15,6 +15,7 @@ import { Loaded } from "./PanelState";
 import { loopRouteId } from "../shell/routes";
 import type { RouteId, TimeRange } from "../shell";
 import { useAuth, useProvenance, useWindowSuffix, type LoadState } from "../../lib/api";
+import { useDemoReplay, type ReplayEvent } from "../../lib/demo-replay";
 import type { EventDetailResponse, LoopEvent, Outcome, StatsResponse } from "../../types";
 
 // Visual mapping for the outcome strip. Drives the five-pill row in the
@@ -259,15 +260,32 @@ function OverviewBody({
     };
   }, [events]);
 
+  // Live replay (demo only): recorded benchmark runs revealed one every
+  // few seconds this session. They feed the Recent-runs feed, tick the
+  // pulse's current bucket, and drive the animated trajectory. The big
+  // scaled heroes deliberately do NOT tick — those dollars are a
+  // projection, and accruing them in real time would imply measurement.
+  const replay = useDemoReplay();
+
   // Recent transitions: 8 most recent events with their classified band.
+  // Replayed recorded runs (demo) prepend, newest first.
   const transitions = useMemo(() => {
-    return events.slice(0, 8).map((e) => ({
+    const replayRows = replay.revealed.map((r) => ({
+      ts: r.revealedAt,
+      band: bandFromEvent(r.event),
+      workloadId: r.event.workload_id ?? "—",
+      iterations: r.event.iterations_used,
+      isReplay: true,
+    }));
+    const sampleRows = events.slice(0, 8).map((e) => ({
       ts: e.timestamp_hour * 1000,
       band: bandFromEvent(e),
       workloadId: e.workload_id ?? "—",
       iterations: e.iterations_used,
+      isReplay: false,
     }));
-  }, [events]);
+    return [...replayRows, ...sampleRows].slice(0, 8);
+  }, [events, replay.revealed]);
 
   // Latest-trajectory selection. Prefer the most recent attention-worthy
   // run (OSCILLATING / DIVERGING) so an operator opens to the run they'd
@@ -283,7 +301,18 @@ function OverviewBody({
     });
     return attention ?? withId[0] ?? null;
   }, [events]);
-  const trajectoryDetail = useEventDetail(trajectoryEvent?.id ?? null);
+  const trajectoryDetail = useEventDetail(replay.latest ? null : trajectoryEvent?.id ?? null);
+
+  // Pulse buckets, with the current bucket ticking up as recorded runs
+  // replay (raw-count regime — replayed runs are real recorded events).
+  const pulseBuckets = useMemo(() => {
+    if (replay.revealed.length === 0 || fleetPulse.mode !== "rolling-24h") {
+      return fleetPulse.buckets;
+    }
+    const b = [...fleetPulse.buckets];
+    b[b.length - 1] = (b[b.length - 1] ?? 0) + replay.revealed.length;
+    return b;
+  }, [fleetPulse, replay.revealed.length]);
 
   return (
     <>
@@ -448,10 +477,10 @@ function OverviewBody({
             >
               <div className="label">{fleetPulse.label}</div>
               <div className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>
-                peak <span style={{ color: "var(--text-1)" }}>{Math.max(...fleetPulse.buckets)}</span>
+                peak <span style={{ color: "var(--text-1)" }}>{Math.max(...pulseBuckets)}</span>
                 {" · total "}
                 <span style={{ color: "var(--text-1)" }}>
-                  {fleetPulse.buckets.reduce((s, v) => s + v, 0)}
+                  {pulseBuckets.reduce((s, v) => s + v, 0)}
                 </span>
               </div>
             </div>
@@ -477,7 +506,7 @@ function OverviewBody({
             )}
             <div style={{ marginTop: 10 }}>
               <Sparkline
-                data={fleetPulse.buckets}
+                data={pulseBuckets}
                 width={680}
                 height={88}
                 color="var(--accent)"
@@ -504,24 +533,41 @@ function OverviewBody({
               <h3 style={{ margin: 0, fontSize: 13, fontWeight: 500 }}>
                 Latest run trajectory
               </h3>
-              {trajectoryEvent && (
-                <StatePill band={bandFromEvent(trajectoryEvent)} size="sm" />
-              )}
-              {trajectoryEvent && (
-                <span
-                  className="mono"
-                  style={{ fontSize: 11, color: "var(--text-3)" }}
-                >
-                  {trajectoryEvent.workload_id ?? "—"} · {fmtRel(trajectoryEvent.timestamp_hour * 1000)}
-                </span>
+              {replay.latest ? (
+                <>
+                  <StatePill band={bandFromEvent(replay.latest.event)} size="sm" />
+                  <span className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>
+                    {replay.latest.event.workload_id ?? "—"} · recorded run ·
+                    replayed {fmtRel(replay.latest.revealedAt)}
+                  </span>
+                </>
+              ) : (
+                <>
+                  {trajectoryEvent && (
+                    <StatePill band={bandFromEvent(trajectoryEvent)} size="sm" />
+                  )}
+                  {trajectoryEvent && (
+                    <span
+                      className="mono"
+                      style={{ fontSize: 11, color: "var(--text-3)" }}
+                    >
+                      {trajectoryEvent.workload_id ?? "—"} · {fmtRel(trajectoryEvent.timestamp_hour * 1000)}
+                    </span>
+                  )}
+                </>
               )}
             </div>
-            {trajectoryEvent?.workload_id && (
+            {(replay.latest?.event.workload_id ?? trajectoryEvent?.workload_id) && (
               <button
                 type="button"
                 className="chip"
                 onClick={() =>
-                  setRoute(loopRouteId(trajectoryEvent.workload_id as string))
+                  setRoute(
+                    loopRouteId(
+                      (replay.latest?.event.workload_id ??
+                        trajectoryEvent?.workload_id) as string,
+                    ),
+                  )
                 }
                 style={{ background: "var(--surf-2)", whiteSpace: "nowrap" }}
               >
@@ -529,10 +575,14 @@ function OverviewBody({
               </button>
             )}
           </div>
-          <TrajectoryCardBody
-            detailState={trajectoryDetail.state}
-            hasCandidate={trajectoryEvent != null}
-          />
+          {replay.latest ? (
+            <ReplayTrajectory replay={replay.latest} />
+          ) : (
+            <TrajectoryCardBody
+              detailState={trajectoryDetail.state}
+              hasCandidate={trajectoryEvent != null}
+            />
+          )}
         </div>
 
         <div
@@ -605,9 +655,43 @@ function OverviewBody({
 
         <div className="card span-6" style={{ display: "flex", flexDirection: "column" }}>
           <div className="card-h">
-            <h3>Recent runs</h3>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <h3>Recent runs</h3>
+              {replay.enabled && (
+                <span
+                  className="mono"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 9.5,
+                    padding: "2px 7px",
+                    borderRadius: 3,
+                    background: "color-mix(in oklab, var(--accent) 14%, transparent)",
+                    color: "var(--accent)",
+                    letterSpacing: "0.05em",
+                  }}
+                  title="Replaying real recorded runs from the public benchmark (loopgain.ai/benchmark). Recorded measurements, not live inference."
+                >
+                  <span
+                    className="pulse-dot"
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
+                      background: "var(--accent)",
+                    }}
+                  />
+                  LIVE REPLAY
+                </span>
+              )}
+            </div>
             <span className="mono" style={{ fontSize: 10.5, color: "var(--text-3)" }}>
-              {transitions.length} events
+              {replay.enabled
+                ? `${replay.revealed.length} recorded ${
+                    replay.revealed.length === 1 ? "run" : "runs"
+                  } replayed this session`
+                : `${transitions.length} events`}
             </span>
           </div>
           <div style={{ flex: 1, overflow: "auto", padding: "4px 0" }}>
@@ -623,8 +707,8 @@ function OverviewBody({
               const clickable = t.workloadId !== "—";
               return (
                 <div
-                  key={i}
-                  className="recent-row"
+                  key={`${t.ts}-${t.workloadId}`}
+                  className={t.isReplay ? "recent-row replay-enter" : "recent-row"}
                   role={clickable ? "button" : undefined}
                   tabIndex={clickable ? 0 : undefined}
                   onClick={clickable ? () => setRoute(loopRouteId(t.workloadId)) : undefined}
@@ -805,6 +889,45 @@ function TrajectoryCardBody({
     );
   }
   return <TrajectoryChart pit={event.per_iteration} />;
+}
+
+/** Animated replay of a recorded run's per-iteration trajectory: the
+ *  error/Aβ trace draws in iteration by iteration (~300ms each), so a
+ *  demo visitor watches the loop "run" — with data that was measured
+ *  when the benchmark actually ran, not generated now. */
+function ReplayTrajectory({ replay }: { replay: ReplayEvent }) {
+  const pit = replay.detail.per_iteration;
+  const n = pit?.error_history.length ?? 0;
+  const [drawn, setDrawn] = useState(1);
+
+  useEffect(() => {
+    setDrawn(1);
+    if (!pit || n <= 1) return;
+    const id = window.setInterval(() => {
+      setDrawn((v) => {
+        if (v >= n) {
+          window.clearInterval(id);
+          return v;
+        }
+        return v + 1;
+      });
+    }, 300);
+    return () => window.clearInterval(id);
+  }, [replay, pit, n]);
+
+  if (!pit) {
+    return (
+      <TrajectoryEmpty>
+        This recorded run has no per-iteration data to replay.
+      </TrajectoryEmpty>
+    );
+  }
+  const sliced = {
+    ...pit,
+    error_history: pit.error_history.slice(0, drawn),
+    convergence_profile: pit.convergence_profile.slice(0, Math.max(0, drawn - 1)),
+  };
+  return <TrajectoryChart pit={sliced} />;
 }
 
 function TrajectoryEmpty({ children }: { children: ReactNode }) {
