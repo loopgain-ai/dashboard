@@ -74,7 +74,7 @@ export function TopBar({
           bench
             ? "Public benchmark tenant — click to connect your own"
             : demo
-            ? "Demo projection — click to connect your own tenant"
+            ? "Demo — live replay of the recorded benchmark run. Click to connect your own tenant"
             : connection.status === "connected"
             ? "Connected"
             : "Configure endpoint"

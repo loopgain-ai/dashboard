@@ -234,10 +234,9 @@ function IterationsToBest({
                 shares of a {fmtInt(sample.n)}-run sample
               </span>
             </div>
-            {/* Shares, not raw counts: the fleet headline next to this card
-                may be scaled (demo projection), and raw sample counts beside
-                scaled prose mixed two regimes in one card. Percentages are
-                scale-invariant. */}
+            {/* Shares, not raw counts: percentages read consistently across
+                live tenants, the bench view, and the demo replay's moving
+                visible prefix. */}
             <HBar
               rows={sample.distribution.map((d) => ({
                 label: `iter ${d.iter}`,
@@ -272,9 +271,8 @@ function IterationsToBest({
             {
               tone: "var(--band-osc)",
               head: "Cap too low",
-              // Share of the SAMPLE — cap1FalseStop is a sample count, and
-              // dividing it by the (possibly demo-scaled) fleet total printed
-              // "35 loops (0.0%)" under a 1M-loop projection.
+              // Share of the SAMPLE — cap1FalseStop is a sample count;
+              // divide by the sample size, never the fleet total.
               big: fmtPct(cap1FalseStop / Math.max(sample.n, 1)),
               bigSub: `${fmtInt(cap1FalseStop)} of ${fmtInt(sample.n)}-run sample`,
               body: (

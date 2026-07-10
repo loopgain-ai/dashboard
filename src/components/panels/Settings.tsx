@@ -5,7 +5,7 @@
 // predicate matches. Each rule row has a Test button that fires the real
 // delivery path once with a marked test payload.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createAlertRule,
   deleteAlertRule,
@@ -215,18 +215,42 @@ function AlertRulesCard() {
   const { config, demo } = useAuth();
   const { state, refresh } = useAlertRules();
   // Alerts are a Team-tier feature. The receiver enforces this on the
-  // write verbs (403 team_tier_required); the UI mirrors it so an
-  // Individual-tier user sees the upgrade path instead of a dead form.
+  // write verbs (403 team_tier_required); the UI mirrors it by keeping
+  // every write action clickable but opening the Team-upgrade modal
+  // instead of performing it — an upgrade pitch, never a dead button or
+  // a raw 403.
   const statsForTier = useStats({});
   const isIndividualTier =
     statsForTier.state.status === "ok" &&
     statsForTier.state.data.tier === "individual";
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | "new" | null>(null);
   const [draft, setDraft] = useState<AlertRulePayload>(() => defaultPayload());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Per-rule transient result of the last Test fire ("…" while in flight).
   const [testResults, setTestResults] = useState<Record<number, string>>({});
+
+  /** Wrap a write action with the tier gate: Individual-tier users get
+   *  the upgrade modal instead of the action. */
+  function gated(action: () => void): () => void {
+    return () => {
+      if (isIndividualTier) setUpgradeOpen(true);
+      else action();
+    };
+  }
+
+  /** A 403 team_tier_required from the receiver (e.g. tier changed since
+   *  the stats fetch) opens the same modal instead of surfacing raw
+   *  error text. Returns true when handled. */
+  function handleTierError(e: unknown): boolean {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("team_tier_required")) {
+      setUpgradeOpen(true);
+      return true;
+    }
+    return false;
+  }
 
   const rules = useMemo(() => {
     if (state.status === "ok") return state.data.rules;
@@ -268,7 +292,8 @@ function AlertRulesCard() {
       setEditingId(null);
       refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (handleTierError(e)) setEditingId(null);
+      else setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSubmitting(false);
     }
@@ -291,7 +316,9 @@ function AlertRulesCard() {
       await updateAlertRule(config, r.id, { ...ruleToPayload(r), enabled: !r.enabled });
       refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (!handleTierError(e)) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     }
   }
 
@@ -308,10 +335,14 @@ function AlertRulesCard() {
             : `test failed${res.error ? ` · ${res.error}` : ""}`,
       }));
     } catch (e) {
-      setTestResults((m) => ({
-        ...m,
-        [r.id]: e instanceof Error ? e.message : String(e),
-      }));
+      if (handleTierError(e)) {
+        setTestResults((m) => ({ ...m, [r.id]: "Team feature" }));
+      } else {
+        setTestResults((m) => ({
+          ...m,
+          [r.id]: e instanceof Error ? e.message : String(e),
+        }));
+      }
     }
   }
 
@@ -319,42 +350,10 @@ function AlertRulesCard() {
     <div className="card">
       <div className="card-h">
         <h3>Alert rules · {rules.filter((r) => r.enabled).length} active</h3>
-        {!isIndividualTier && (
-          <Chip onClick={startNew}>
-            <Icon.Bolt /> New rule
-          </Chip>
-        )}
+        <Chip onClick={gated(startNew)}>
+          <Icon.Bolt /> New rule
+        </Chip>
       </div>
-
-      {isIndividualTier && (
-        <div
-          style={{
-            padding: "12px 14px",
-            background: "color-mix(in oklab, var(--accent) 7%, transparent)",
-            border: "1px solid color-mix(in oklab, var(--accent) 25%, transparent)",
-            borderRadius: 5,
-            margin: 14,
-            fontSize: 11.5,
-            color: "var(--text-2)",
-            lineHeight: 1.5,
-          }}
-        >
-          <span className="mono" style={{ color: "var(--accent)" }}>
-            Team feature
-          </span>{" "}
-          · Alert delivery to Slack, email, and webhooks is part of the Team
-          tier ($199/mo per workspace). Existing rules keep evaluating and can
-          be deleted; creating, editing and testing rules requires an upgrade.{" "}
-          <a
-            href="https://loopgain.ai/#pricing"
-            target="_blank"
-            rel="noreferrer"
-            style={{ color: "var(--accent)", textDecoration: "underline" }}
-          >
-            See pricing
-          </a>
-        </div>
-      )}
 
       {demo && (
         <div
@@ -414,13 +413,12 @@ function AlertRulesCard() {
           <RuleRow
             key={r.id}
             r={r}
-            onEdit={() => startEdit(r)}
+            onEdit={gated(() => startEdit(r))}
             onDelete={() => remove(r.id)}
-            onToggle={() => toggleEnabled(r)}
-            onTest={() => fireTest(r)}
+            onToggle={gated(() => toggleEnabled(r))}
+            onTest={gated(() => fireTest(r))}
             testResult={testResults[r.id]}
             disabled={demo}
-            writesLocked={isIndividualTier}
           />
         ),
       )}
@@ -435,7 +433,122 @@ function AlertRulesCard() {
           label="New rule"
         />
       )}
+
+      <UpgradeTeamModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
     </div>
+  );
+}
+
+/** Team-upgrade modal — shown when an Individual-tier user tries any
+ *  alert write (create / edit / toggle / test). The receiver enforces the
+ *  same gate with 403 team_tier_required; this is the friendly face of
+ *  it. Delete stays ungated so a downgraded user is never trapped with a
+ *  firing rule. */
+function UpgradeTeamModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const d = dialogRef.current;
+    if (!d) return;
+    if (open && !d.open) d.showModal();
+    if (!open && d.open) d.close();
+  }, [open]);
+  return (
+    <dialog
+      ref={dialogRef}
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+      onClick={(e) => {
+        // Click on the backdrop closes (the dialog element itself is the
+        // target only when the click lands outside the inner card).
+        if (e.target === dialogRef.current) onClose();
+      }}
+      style={{
+        background: "var(--surf-1)",
+        border: "1px solid var(--border-2)",
+        borderRadius: 12,
+        padding: 0,
+        maxWidth: 440,
+        width: "calc(100vw - 48px)",
+        color: "var(--text-1)",
+        boxShadow: "0 24px 80px rgba(0,0,0,0.55)",
+      }}
+    >
+      <div style={{ padding: "22px 24px 8px" }}>
+        <div
+          className="mono"
+          style={{
+            display: "inline-block",
+            fontSize: 10,
+            padding: "3px 8px",
+            borderRadius: 3,
+            background: "color-mix(in oklab, var(--accent) 14%, transparent)",
+            color: "var(--accent)",
+            letterSpacing: "0.05em",
+            marginBottom: 10,
+          }}
+        >
+          TEAM FEATURE
+        </div>
+        <h2 style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 600 }}>
+          Alerts are part of the Team tier
+        </h2>
+        <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.6, color: "var(--text-2)" }}>
+          Get paged in Slack, email, or any webhook the moment a loop
+          diverges or rollbacks spike — with per-workload filters, cooldowns,
+          and a delivery audit trail. Team is{" "}
+          <span style={{ color: "var(--text-1)" }}>$199/mo per workspace</span>{" "}
+          and covers your whole team's loops.
+        </p>
+        <p style={{ margin: "10px 0 0", fontSize: 11.5, lineHeight: 1.5, color: "var(--text-3)" }}>
+          Your existing rules keep evaluating and can still be deleted —
+          creating, editing, and testing rules is what upgrades unlock.
+        </p>
+      </div>
+      <div
+        style={{
+          padding: "16px 24px 20px",
+          display: "flex",
+          justifyContent: "flex-end",
+          gap: 8,
+        }}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            background: "transparent",
+            color: "var(--text-2)",
+            border: "1px solid var(--border)",
+            borderRadius: 5,
+            padding: "6px 14px",
+            fontSize: 12,
+            cursor: "pointer",
+          }}
+        >
+          Not now
+        </button>
+        <a
+          href="https://loopgain.ai/#pricing"
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            background: "var(--accent)",
+            color: "var(--bg-0)",
+            border: "1px solid var(--accent)",
+            borderRadius: 5,
+            padding: "6px 14px",
+            fontSize: 12,
+            fontWeight: 500,
+            cursor: "pointer",
+            textDecoration: "none",
+          }}
+        >
+          Upgrade to Team
+        </a>
+      </div>
+    </dialog>
   );
 }
 
@@ -447,7 +560,6 @@ function RuleRow({
   onTest,
   testResult,
   disabled,
-  writesLocked = false,
 }: {
   r: AlertRule;
   onEdit: () => void;
@@ -456,11 +568,8 @@ function RuleRow({
   onTest: () => void;
   testResult?: string;
   disabled: boolean;
-  /** Team-tier gate: test/edit/toggle locked, DELETE stays available so a
-   *  downgraded user is never trapped with a firing rule. */
-  writesLocked?: boolean;
 }) {
-  const lockWrite = disabled || writesLocked;
+  const lockWrite = disabled;
   return (
     <div
       style={{

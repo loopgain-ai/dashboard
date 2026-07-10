@@ -165,6 +165,13 @@ export interface LoopEvent extends Classification {
    *  NULL on events ingested before the column existed. */
   best_index: number | null;
   library_version: string;
+  /** Receiver 2026-07-10+: per-event fields that always existed in D1 but
+   *  were only aggregated in /v1/stats before. Needed by the demo's
+   *  checkpoint replay (client-side recompute of mid-run state); optional
+   *  so older receiver responses still typecheck. */
+  rollback_triggered?: number | null; // 0 | 1
+  actual_dollars_saved?: number | null;
+  actual_dollars_spent?: number | null;
 }
 
 /** GET /v1/events response. */

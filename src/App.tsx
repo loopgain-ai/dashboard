@@ -8,12 +8,10 @@ import { useEffect, useMemo, useState } from "react";
 import { version as APP_VERSION } from "../package.json";
 import { AuthContext, useAuthProvider } from "./lib/api";
 import { FilterContext, useFiltersProvider } from "./lib/filters";
-import { DemoParamsContext, useDemoParams, useDemoParamsProvider } from "./lib/demo-params";
 import { DemoReplayContext, useDemoReplayProvider } from "./lib/demo-replay";
 import { useStats } from "./lib/data-hooks";
 import { ConnectDialog } from "./components/auth/ConnectDialog";
 import { MethodologyModal } from "./components/auth/MethodologyModal";
-import { DemoControls } from "./components/panels/DemoControls";
 import {
   BottomNav,
   CommandPalette,
@@ -68,13 +66,10 @@ function loadIncludeCalibration(): boolean {
 export function App() {
   const auth = useAuthProvider();
   const filters = useFiltersProvider();
-  const demoParams = useDemoParamsProvider();
   return (
     <AuthContext.Provider value={auth}>
       <FilterContext.Provider value={filters}>
-        <DemoParamsContext.Provider value={demoParams}>
-          <DemoReplayHost />
-        </DemoParamsContext.Provider>
+        <DemoReplayHost />
       </FilterContext.Provider>
     </AuthContext.Provider>
   );
@@ -154,11 +149,10 @@ function AppInner() {
   const pollMs = LIVE_POLL_MS;
   const sinceHours = timeRangeHours(timeRange) ?? undefined;
 
-  // In demo mode the Demo Controls' $/iter is THE cost assumption — panels
-  // must not silently use the authed Settings value alongside it (two
-  // competing $/iter on one screen). Authed tenants keep their own setting.
-  const demoParams = useDemoParams();
-  const effectiveCostPerIter = demo ? demoParams.params.dollarsPerIter : costPerIter;
+  // Demo mode never uses a manual $/iter — the recorded bench run carries
+  // measured per-run dollars, so the extrapolation fallback that consumes
+  // costPerIter is unreachable there. Authed tenants keep their setting.
+  const effectiveCostPerIter = costPerIter;
 
   // ── Workloads for palette ───────────────────────────────────────────
   const stats = useStats({ pollMs, includeCalibration });
@@ -308,9 +302,6 @@ function AppInner() {
           bench={bench}
         />
         {isAuthed && route !== "settings" && route !== "empty" && <FilterBar />}
-        {demo && route !== "empty" && (
-          <DemoControls onOpenMethodology={() => setMethodologyOpen(true)} />
-        )}
         <main style={{ flex: 1, overflow: "auto" }}>{content}</main>
         <footer
           className="app-footer"
@@ -346,7 +337,7 @@ function AppInner() {
                     : "var(--text-3)",
               }}
             >
-              ● {bench ? "bench" : demo ? "demo projection" : connection.status}
+              ● {bench ? "bench" : demo ? "demo · recorded replay" : connection.status}
             </span>
           </span>
           {connection.status === "connected" && "customerId" in connection && connection.customerId && (
@@ -404,12 +395,12 @@ function AppInner() {
   );
 }
 
-/** Demo banner — explicit "you're looking at a projection, here's where
- *  to verify the receipts" disclosure. The ⓘ link opens the methodology
- *  modal; the /benchmark link sends visitors to the underlying bench; the
- *  "Install free" CTA routes to the inline EmptyState (install snippets
- *  for all 6 framework adapters) rather than the marketing site, so the
- *  visitor stays in the dashboard. */
+/** Demo banner — explicit "you're watching a replay of the recorded
+ *  benchmark run" disclosure. The ⓘ link opens the methodology modal;
+ *  the /benchmark link sends visitors to the same tenant's static
+ *  full-run view; the "Install free" CTA routes to the inline EmptyState
+ *  (install snippets for all 6 framework adapters) rather than the
+ *  marketing site, so the visitor stays in the dashboard. */
 function DemoBanner({
   onOpenMethodology,
   onOpenInstall,
@@ -451,21 +442,22 @@ function DemoBanner({
       }}
     >
       <div style={{ flex: "1 1 320px", minWidth: 0 }}>
-        <strong style={{ fontWeight: 600 }}>Production-scale projection</strong>{" "}
+        <strong style={{ fontWeight: 600 }}>Live replay of the recorded benchmark run</strong>{" "}
         <span className="demo-banner-long" style={{ color: "var(--text-2)" }}>
-          — bench dynamics × your scale &amp; cost assumptions. The
-          underlying bench (2,000 paired Haiku-4.5 runs across 5
-          workload classes — codegen, debate, planner, RAG, adversarial
-          — and 7 framework categories (6 shipped adapters + 1
-          bare-SDK control), fully measured) is at{" "}
+          — you&apos;re watching the bench tenant&apos;s own dashboard,
+          picked up 1,000 runs before the end of its 2,000-run recorded
+          benchmark (paired Haiku-4.5 runs across 5 workload classes and
+          7 framework categories, fully measured). Runs land about once a
+          second in their true recorded order; every number is a
+          measurement — recorded telemetry, not live inference, nothing
+          scaled. The finished run is at{" "}
           <a
             href="/benchmark"
             style={{ color: "var(--accent)", textDecoration: "underline" }}
           >
             /benchmark
           </a>
-          . The Recent-runs feed replays real recorded runs from that
-          benchmark — recorded measurements, not live inference.{" "}
+          .{" "}
           <button
             type="button"
             onClick={onOpenMethodology}
@@ -609,7 +601,7 @@ function BenchBanner({ onOpenInstall }: { onOpenInstall: () => void }) {
           >
             public bench repo
           </a>
-          . Read-only — click env:bench to connect your own tenant, or see <a href="/demo" style={{ color: "var(--accent)", textDecoration: "underline" }}>/demo</a> for a production-scale projection.
+          . Read-only — click env:bench to connect your own tenant, or see <a href="/demo" style={{ color: "var(--accent)", textDecoration: "underline" }}>/demo</a> to watch this run replay live.
         </span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>

@@ -2,17 +2,22 @@
 // API layer) so loopgain-verify can execute the real truth table
 // (dash.demo_provenance_badges). The hook wrapper lives in api.ts.
 //
-// Every dollar figure on the dashboard is one of three things, and the
-// badge next to it must say which (claim-provenance rule: a projection
+// Every dollar figure on the dashboard is one of two things, and the
+// badge next to it must say which (claim-provenance rule: an estimate
 // must never wear a measured badge):
 //   measured     — paired-baseline delta the receiver actually carries
-//                  (SUM(actual_dollars_saved/spent) over real runs)
-//   projected    — demo mode: measured bench numbers × the visitor's
-//                  fleet-scale and $/iter assumptions. Derived FROM
-//                  measurements, but the displayed number is a projection.
+//                  (SUM(actual_dollars_saved/spent) over real runs). In
+//                  demo mode these are the recorded benchmark run's own
+//                  measured dollars, truncated to the replay's position
+//                  — never scaled or re-costed — so the badge names the
+//                  source: the recorded bench run.
 //   extrapolated — no paired baseline: iteration counts × manual $/iter.
+//
+// (The former "projected" mode — measured bench × visitor-chosen fleet
+// scale and $/iter — was retired 2026-07-10 with the checkpoint-replay
+// demo: /demo now shows only true recorded state.)
 
-export type ProvenanceMode = "measured" | "projected" | "extrapolated";
+export type ProvenanceMode = "measured" | "extrapolated";
 
 export interface Provenance {
   mode: ProvenanceMode;
@@ -22,24 +27,15 @@ export interface Provenance {
   showNotExtrapolation: boolean;
 }
 
-/** Demo mode always wins: its numbers are scaled/re-costed projections
- *  even though the underlying bench fields are measured. */
 export function resolveProvenance(
   demo: boolean,
   hasActuals: boolean,
   costPerIter?: number,
 ): Provenance {
-  if (demo) {
-    return {
-      mode: "projected",
-      badge: "PROJECTED · FROM MEASURED BENCH",
-      showNotExtrapolation: false,
-    };
-  }
   if (hasActuals) {
     return {
       mode: "measured",
-      badge: "MEASURED · PAIRED BASELINE",
+      badge: demo ? "MEASURED · RECORDED BENCH RUN" : "MEASURED · PAIRED BASELINE",
       showNotExtrapolation: true,
     };
   }

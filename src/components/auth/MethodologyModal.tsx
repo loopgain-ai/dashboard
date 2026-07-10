@@ -1,11 +1,9 @@
 // Methodology modal for the /demo route.
 //
-// Discloses what the demo is, what it isn't, what's measured vs.
-// projected, and where the defaults come from. Every credibility-risky
-// number in the demo dashboard should have an answer in this modal.
-//
-// Sourced from the 2026-05-28 research pass (Claude Desktop synthesis,
-// 24 sources) — see the bullet list below for the consequential ones.
+// Discloses what the demo is (a checkpoint replay of the real recorded
+// benchmark run), what it isn't, and how the replay works. Every
+// credibility-risky number in the demo dashboard should have an answer
+// in this modal.
 
 import { useEffect, useRef } from "react";
 
@@ -81,34 +79,73 @@ export function MethodologyModal({ open, onClose }: Props) {
         }}
       >
         <Section title="What this is">
-          A production-scale projection: every distributional characteristic
-          (Aβ shape, outcome ratios, iterations-to-best, iteration
-          counts, framework mix) is bootstrap-sampled from the{" "}
+          A <strong>live replay of the recorded benchmark run</strong>:
+          you're watching the{" "}
           <a
             href="/benchmark"
             style={{ color: "var(--accent)" }}
           >
-            public benchmark tenant
+            public benchmark tenant's
           </a>{" "}
-          — 2,000 paired real-API runs of Claude Haiku 4.5 across{" "}
-          <strong>5 workload classes</strong> (codegen / debate /
-          multi-step planner / RAG retrieval refinement / adversarial),{" "}
-          <strong>7 framework categories</strong> (the library's 6
-          shipped integration adapters — LangGraph, CrewAI, AutoGen,
-          LangChain, OpenAI Agents SDK, Claude Agent SDK — plus a
-          bare-Anthropic-SDK control cell that runs LoopGain directly
-          without any framework wrapper), and{" "}
-          <strong>5 loop types</strong> (refinement, verify_revise,
-          tool_use_retry, critique_revise, iterative_retrieval). Two
-          parameters are yours to set:{" "}
-          <strong>loop events / month</strong> (your scale) and{" "}
-          <strong>$/iter</strong> (your model + token budget). The chart
-          sample is a representative ~3,000-event slice of your selected
-          scale; the headline aggregates are scaled by{" "}
-          <span className="mono" style={{ color: "var(--text-1)" }}>
-            N / 2000
-          </span>{" "}
-          from the bench measurements.
+          own dashboard, picked up 1,000 runs before the end of its
+          2,000-run recorded benchmark — 2,000 paired real-API runs of
+          Claude Haiku 4.5 across <strong>5 workload classes</strong>{" "}
+          (codegen / debate / multi-step planner / RAG retrieval
+          refinement / adversarial), <strong>7 framework categories</strong>{" "}
+          (the library's 6 shipped integration adapters — LangGraph,
+          CrewAI, AutoGen, LangChain, OpenAI Agents SDK, Claude Agent SDK
+          — plus a bare-Anthropic-SDK control cell), and{" "}
+          <strong>5 loop types</strong>. On load, every panel shows the
+          exact state the dashboard was in after the first 1,000 recorded
+          runs had landed; the remaining runs then arrive about once a
+          second in their true recorded order, and every figure accrues
+          each run's own measured numbers. When the run finishes, the
+          replay loops back to the checkpoint.
+        </Section>
+
+        <Section title="How the replay works">
+          <ul style={{ paddingLeft: 18, margin: 0 }}>
+            <li>
+              <strong>No inference happens.</strong> Every trajectory,
+              band, iteration count and dollar was measured when the
+              benchmark actually ran (June 2026); the replay only reveals
+              the recorded events in order. "Live" always means "live
+              replay of recorded runs," never live model calls.
+            </li>
+            <li>
+              <strong>Nothing is scaled or re-costed.</strong> Dollar
+              figures are the runs' own paired-baseline measurements
+              (each workload ran both under LoopGain and under a fixed
+              max_iter=20 cap; the delta is real API cost). The totals
+              you watch grow converge to the same numbers published on
+              the landing page and at /benchmark — 92.8% of loop spend
+              eliminated, $25.11 measured savings on the full run.
+            </li>
+            <li>
+              <strong>The clock is compressed.</strong> The recorded run
+              ingested over ~9 hours; the replay plays its final 1,000
+              runs in ~17 minutes. Arrival <em>hours</em> in the pulse
+              chart are the true recorded ones; only the playback speed
+              is compressed.
+            </li>
+            <li>
+              <strong>Alert rules are example configuration.</strong> The
+              bench tenant never configured paging, so the Alerts panel
+              shows three example rules + an illustrative audit trail
+              (labeled in-panel). Configuration, not measurement.
+            </li>
+            <li>
+              <strong>
+                <code style={{ fontFamily: "var(--mono)" }}>max_iter=20</code>{" "}
+                is the fixed-cap baseline in the savings math
+              </strong>{" "}
+              — the bench protocol's own setting. If your production cap
+              is meaningfully lower (e.g. 5–10), the headline reduction %
+              on your fleet will be smaller than the bench's. This is the
+              assumption most worth interrogating when comparing the
+              bench to your reality.
+            </li>
+          </ul>
         </Section>
 
         <Section title="What this is not">
@@ -117,129 +154,54 @@ export function MethodologyModal({ open, onClose }: Props) {
           (codegen with deterministic verifiers — 400 events, 20% of
           bench) and harder regimes (multi-step planner 400 / debate
           critique-revise 400 / RAG retrieval refinement 200 /
-          adversarial-by-design 600). The aggregate 65/18/17
-          conv/osc/div split reflects that blend; a real production
-          tenant on a single high-volume easy flow (support deflection,
-          extraction) would converge much more cleanly, while a tenant
-          dominated by intrinsic chain-of-thought reasoning (which our
-          research shows <em>fails</em> at self-correction without
-          external feedback) would diverge more. The projection is
-          credible as a <em>multi-workload mid-difficulty case</em>, not
-          as "the production distribution" — your actual loop dynamics
-          will differ.
+          adversarial-by-design 600). The aggregate conv/osc/div split
+          reflects that blend; a real production tenant on a single
+          high-volume easy flow (support deflection, extraction) would
+          converge much more cleanly, while a tenant dominated by
+          intrinsic chain-of-thought reasoning (which the research shows{" "}
+          <em>fails</em> at self-correction without external feedback)
+          would diverge more. Read it as a{" "}
+          <em>multi-workload mid-difficulty case</em>, not "the
+          production distribution" — your loop dynamics will differ.
+          And the bench ran lean Haiku prompts (~$0.0006/iter measured);
+          production agents with rich tool definitions and context run
+          10–100× more tokens per iteration, so your absolute dollars
+          scale accordingly even where the percentages carry over.
         </Section>
 
-        <Section title="Default parameter defense">
-          <ul style={{ paddingLeft: 18, margin: 0 }}>
-            <li>
-              <strong>Mid-market default = 1M events/month.</strong>{" "}
-              Anchored on LangSmith's "1–1.4M traces/month = mid-size
-              enterprise" guidance and Langfuse's "~500K LLM calls/month
-              = mid-market" baseline. A few product flows at 50K–100K
-              conversations/month × ~10–25 spans per agentic trace ≈ 1M
-              events. SMB (50K) sits at the Langfuse free-tier ceiling;
-              Enterprise (30M) is in the Klarna-scale range (2.3M
-              conversations × 10–25 spans).
-            </li>
-            <li>
-              <strong>Sonnet 4.6 default → ~$0.045/iter.</strong> Per-iter
-              = one revise call + one verify call. At Sonnet's $3/MTok
-              input + $15/MTok output, ~10K input + ~1K output tokens per
-              iter (production agents typically run 5K–15K input tokens
-              per turn with tool definitions, history, and retrieved
-              context) → $0.030 + $0.015 = $0.045/iter, rounded to $0.04
-              in the slider's display. Haiku lean (~6K + 1K) ≈ $0.011;
-              Opus heavy (~13K + 1.2K) ≈ $0.095.
-            </li>
-            <li>
-              <strong>
-                Bench's own implied $0.000625/iter is{" "}
-                <em>not</em> a price to fix.
-              </strong>{" "}
-              That's the real measured cost of Haiku 4.5 on lean
-              bench prompts (a few hundred tokens/iter average across
-              the 5 workload classes). Production agents run 10–100×
-              more tokens/iter with rich tool definitions, retrieved
-              context, and conversation history; we keep the bench's
-              receipts as-is and project to realistic production cost
-              here.
-            </li>
-            <li>
-              <strong>
-                <code style={{ fontFamily: "var(--mono)" }}>max_iter=20</code>{" "}
-                is the fixed-cap baseline used in the savings math.
-              </strong>{" "}
-              The Iterations · 30d card shows{" "}
-              <span className="mono" style={{ color: "var(--text-1)" }}>
-                used / (events × 20)
-              </span>{" "}
-              as a counterfactual "what you'd have spent if every loop ran
-              the full cap with no LoopGain rolling them back early." 20 is
-              the bench protocol's max_iter setting, hardcoded here for the
-              public demo. A real customer would set this from their tenant
-              config; if your production cap is meaningfully lower (e.g.
-              5–10), the headline reduction % will be smaller than what's
-              shown here. This is the assumption most worth interrogating
-              when comparing the demo to your reality.
-            </li>
-          </ul>
-        </Section>
-
-        <Section title="What's measured vs. projected">
+        <Section title="What's measured vs. what isn't">
           <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 11.5 }}>
             <thead>
               <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                <th style={cellStyle}>Metric</th>
+                <th style={cellStyle}>Surface</th>
                 <th style={cellStyle}>Source</th>
               </tr>
             </thead>
             <tbody>
-              <Row metric="Outcome distribution (CONV / OSC / DIV)" source="Measured — bench" />
-              <Row metric="Aβ distribution (median, p99, per-event)" source="Measured — bench" />
-              <Row metric="Iterations per run, rollback rate" source="Measured — bench" />
-              <Row metric="Framework / loop_type / team mix" source="Measured — bench" />
-              <Row
-                metric="Headline aggregates (total events, iterations, rollbacks)"
-                source="Scaled by N/2000 from bench"
-              />
-              <Row
-                metric="Savings $ + spend $"
-                source="Scaled iterations × your $/iter"
-              />
-              <Row
-                metric="Visible chart sample (~3K events)"
-                source="Bootstrap-sampled from bench"
-              />
+              <Row metric="Every stat, chart, trajectory and dollar" source="Measured — recorded bench run" />
+              <Row metric="Arrival hours in the pulse chart" source="Measured — recorded (playback compressed)" />
+              <Row metric="Alert rules + delivery audit trail" source="Example configuration (labeled)" />
+              <Row metric="max_iter=20 counterfactual baseline" source="Bench protocol setting" />
             </tbody>
           </table>
-        </Section>
-
-        <Section title="Sources (research pass, 2026-05-28)">
-          <ul style={{ paddingLeft: 18, margin: 0, fontSize: 11.5 }}>
-            <li>Huang et al., "LLMs Cannot Self-Correct Reasoning Yet," ICLR 2024 (arxiv:2310.01798)</li>
-            <li>Madaan et al., "Self-Refine," NeurIPS 2023 (arxiv:2303.17651)</li>
-            <li>Yao et al., "τ-bench" (arxiv:2406.12045)</li>
-            <li>Klarna × OpenAI press release (Feb 2024) — 2.3M conversations/month</li>
-            <li>LangSmith pricing — langchain.com/pricing</li>
-            <li>Langfuse pricing &amp; volumes — langfuse.com/pricing, langfuse.com/enterprise</li>
-            <li>a16z "State of AI: 100 Trillion Token Study"</li>
-            <li>
-              Anthropic API pricing (Apr–May 2026) — platform.claude.com/docs/about-claude/pricing
-            </li>
-            <li>SWE-bench in 2026 cost figures — callsphere.ai, epoch.ai</li>
-            <li>"TOOLATHLON" multi-step tool use benchmark (arxiv:2510.25726)</li>
-          </ul>
         </Section>
 
         <Section title="If you want the underlying receipts">
           Go to{" "}
           <a href="/benchmark" style={{ color: "var(--accent)" }}>
             /benchmark
-          </a>
-          . That tenant shows the raw 2,000 paired Haiku-4.5 runs across
-          the 5 workload classes and 7 frameworks — every number is
-          measured, no projection or scaling. The /demo page you're
-          looking at is bench dynamics × your scale assumptions.
+          </a>{" "}
+          for the finished run's static view, or the{" "}
+          <a
+            href="https://github.com/loopgain-ai/loopgain-bench"
+            target="_blank"
+            rel="noopener"
+            style={{ color: "var(--accent)" }}
+          >
+            public bench repo
+          </a>{" "}
+          for the raw trial data and protocol. Same tenant, same 2,000
+          runs — the /demo page you're looking at is that run, replayed.
         </Section>
       </div>
 

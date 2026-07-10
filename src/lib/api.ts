@@ -428,10 +428,10 @@ export type ConnectionState =
 
 export interface AuthCtx {
   config: Config | null;
-  /** Parameterized projection view (`/demo` path). Set once at mount from
-   *  the URL. Data-hooks fetch from the bench public endpoints and apply
-   *  a client-side scaling transform driven by DemoParamsCtx selections.
-   *  See src/lib/demo.ts for the transform layer. */
+  /** Checkpoint-replay view (`/demo` path). Set once at mount from the
+   *  URL. Data-hooks fetch from the bench public endpoints and truncate
+   *  to the replay's position in the recorded run — true measured state,
+   *  nothing scaled. See src/lib/replay-core.ts + demo-replay.ts. */
   demo: boolean;
   /** Read-only public benchmark view (`/benchmark` path). Set once at mount
    *  from the URL; data-hooks route to `/v1/public/benchmark/*` when true. */
@@ -451,12 +451,14 @@ export function useAuth(): AuthCtx {
 }
 
 /** Short window suffix for stat labels ("Iterations · 30d"). Authed reads
- *  use the receiver's rolling 30-day window; bench/demo read the static
+ *  use the receiver's rolling 30-day window; bench reads the static
  *  benchmark dataset all-time (the public routes force sinceEpoch=0), so
- *  a hardcoded "30d" would mislabel the window there. */
+ *  a hardcoded "30d" would mislabel the window there. Demo is the
+ *  checkpoint replay — its aggregates cover the recorded run up to the
+ *  replay's position. */
 export function useWindowSuffix(): string {
   const { demo, bench } = useAuth();
-  return demo || bench ? "all-time" : "30d";
+  return demo ? "run so far" : bench ? "all-time" : "30d";
 }
 
 // ── Provenance ────────────────────────────────────────────────────────
@@ -472,8 +474,9 @@ export {
 } from "./provenance";
 
 /** Provenance for a dollar figure given whether the receiver carries the
- *  measured value. Demo mode always wins: its numbers are scaled/re-costed
- *  projections even though the underlying bench fields are measured. */
+ *  measured value. Demo mode's numbers are the recorded bench run's own
+ *  measured dollars (checkpoint replay — never scaled or re-costed), so
+ *  they're measured too; the badge names the recorded-bench source. */
 export function useProvenance(hasActuals: boolean, costPerIter?: number): Provenance {
   const { demo } = useAuth();
   return resolveProvenance(demo, hasActuals, costPerIter);
@@ -516,10 +519,9 @@ export function useApi<T>(
 
   useEffect(() => {
     // Bench/demo short-circuit: when a public-routes loader is provided,
-    // run it instead of the authed loader. Demo mode supplies a
-    // benchLoader that fetches bench data and applies a scaling transform
-    // (see src/lib/demo.ts). Bench mode supplies a benchLoader that
-    // returns the raw bench data unchanged.
+    // run it instead of the authed loader. Both modes fetch raw bench
+    // data; demo's replay truncation is applied as a post-transform in
+    // the data-hooks (see src/lib/data-hooks.ts).
     if (bench || demo) {
       if (!opts.benchLoader) {
         setState({ status: "idle" });
@@ -624,7 +626,7 @@ export function useAuthProvider(): AuthCtx {
   );
   const [connection, setConnection] = useState<ConnectionState>(() => {
     if (bench) return { status: "connected", customerId: "cust_7931de9f766452ac" };
-    if (demo) return { status: "connected", customerId: "demo-projection" };
+    if (demo) return { status: "connected", customerId: "demo-replay" };
     return loadConfig()
       ? { status: "connected", customerId: null }
       : { status: "disconnected" };

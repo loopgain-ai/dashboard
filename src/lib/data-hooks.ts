@@ -3,11 +3,14 @@
 //   - live  → real receiver via authed `/v1/*` endpoints
 //   - bench → public `/v1/public/benchmark/*` endpoints, scoped on the
 //             receiver side to the hardcoded canonical bench tenant.
-//   - demo  → public bench fetch followed by a client-side scaling
-//             transform driven by DemoParamsCtx (eventsPerMonth +
-//             dollarsPerIter). See src/lib/demo.ts for the transforms.
+//   - demo  → the SAME public bench fetch, truncated to the replay's
+//             chronological cutoff so every panel shows the true state
+//             the bench tenant's dashboard was in at that point of the
+//             recorded run (see src/lib/replay-core.ts). Stats are
+//             recomputed client-side over the visible prefix with the
+//             exact statsCore formulas; nothing is scaled or re-costed.
 // Both bench-mode and demo-mode use the `benchLoader` path in useApi;
-// only the transform differs.
+// demo adds the replay truncation as a post-transform.
 
 import { useMemo } from "react";
 import {
@@ -28,14 +31,9 @@ import {
   type LoadState,
 } from "./api";
 import { useFilters } from "./filters";
-import { useDemoParams } from "./demo-params";
-import {
-  demoAlertDeliveries,
-  demoAlertRules,
-  scaleEvents,
-  scaleProfiles,
-  scaleStats,
-} from "./demo";
+import { useDemoReplay, type DemoReplay } from "./demo-replay";
+import { statsFromEvents, truncateByCutoff } from "./replay-core";
+import { demoAlertDeliveries, demoAlertRules } from "./demo";
 import type {
   AlertDeliveriesResponse,
   AlertRulesResponse,
@@ -45,6 +43,26 @@ import type {
   StatsResponse,
 } from "../types";
 
+/** Map a LoadState<T> through a pure transform (ok data + any carried
+ *  `previous` payloads), used to apply the demo replay truncation. */
+function mapState<T>(state: LoadState<T>, fn: (d: T) => T): LoadState<T> {
+  if (state.status === "ok") return { ...state, data: fn(state.data) };
+  if (state.status === "loading" && state.previous)
+    return { ...state, previous: fn(state.previous) };
+  if (state.status === "error" && state.previous)
+    return { ...state, previous: fn(state.previous) };
+  return state;
+}
+
+/** While the demo replay is still loading the recorded run, hold panels
+ *  in `loading` — rendering the full-run totals for a beat and then
+ *  snapping back to the checkpoint would read as the numbers "dropping". */
+function holdForReplay<T>(state: LoadState<T>, replay: DemoReplay): LoadState<T> {
+  if (replay.status !== "pending") return state;
+  if (state.status === "ok") return { status: "loading", previous: state.data };
+  return state.status === "idle" ? state : { status: "loading" };
+}
+
 export function useStats(
   opts: { pollMs?: number; includeCalibration?: boolean } = {},
 ): {
@@ -52,172 +70,137 @@ export function useStats(
   refresh: () => void;
 } {
   const { demo, bench } = useAuth();
-  const { params } = useDemoParams();
-  return useApi<StatsResponse>(
+  const replay = useDemoReplay();
+  const { state, refresh } = useApi<StatsResponse>(
     demo || bench
       ? null
       : (c, signal) => getStats(c, { includeCalibration: opts.includeCalibration }, signal),
-    [
-      demo ? params.eventsPerMonth : 0,
-      demo ? params.dollarsPerIter : 0,
-      opts.includeCalibration ?? false,
-    ],
+    [opts.includeCalibration ?? false],
     {
       ...opts,
-      benchLoader: bench
-        ? (signal) => getStatsBench(signal)
-        : demo
-        ? async (signal) => scaleStats(await getStatsBench(signal), params)
-        : undefined,
+      benchLoader: bench || demo ? (signal) => getStatsBench(signal) : undefined,
     },
   );
+  // Demo: recompute the aggregates over the replay's visible prefix of
+  // the recorded run. Full prefix (= whole run) reproduces the served
+  // stats exactly — pinned by loopgain-verify dash.demo_checkpoint_truth.
+  const truncated = useMemo<LoadState<StatsResponse>>(() => {
+    if (!demo) return state;
+    if (replay.status !== "ready" || !replay.cutoff) {
+      return holdForReplay(state, replay);
+    }
+    const visible = replay.ordered.slice(0, replay.visibleCount);
+    return mapState(state, (d) => statsFromEvents(visible, d));
+  }, [state, demo, replay.status, replay.cutoff, replay.ordered, replay.visibleCount]);
+  return { state: truncated, refresh };
 }
 
 export function useProfiles(
   opts: { workloadId?: string; sinceHours?: number; pollMs?: number } = {},
 ): { state: LoadState<ProfilesResponse>; refresh: () => void } {
   const { demo, bench } = useAuth();
-  const { params } = useDemoParams();
+  const replay = useDemoReplay();
   const { filters } = useFilters();
   // workloadId from props overrides the global filter (used by Loop Detail
   // to pin to a single workload regardless of the filter bar).
   const effectiveWorkload = opts.workloadId ?? filters.workload_id;
-  return useApi<ProfilesResponse>(
+  const benchParams = {
+    workloadId: effectiveWorkload,
+    sinceHours: opts.sinceHours,
+    framework: filters.framework,
+    loop_type: filters.loop_type,
+    team: filters.team,
+  };
+  const { state, refresh } = useApi<ProfilesResponse>(
     demo || bench
       ? null
-      : (c, signal) =>
-          getProfiles(
-            c,
-            {
-              workloadId: effectiveWorkload,
-              sinceHours: opts.sinceHours,
-              framework: filters.framework,
-              loop_type: filters.loop_type,
-              team: filters.team,
-            },
-            signal,
-          ),
+      : (c, signal) => getProfiles(c, benchParams, signal),
     [
       effectiveWorkload,
       opts.sinceHours,
       filters.framework,
       filters.loop_type,
       filters.team,
-      demo ? params.eventsPerMonth : 0,
-      demo ? params.dollarsPerIter : 0,
     ],
     {
       pollMs: opts.pollMs,
-      benchLoader: bench
-        ? (signal) =>
-            getProfilesBench(
-              {
-                workloadId: effectiveWorkload,
-                sinceHours: opts.sinceHours,
-                framework: filters.framework,
-                loop_type: filters.loop_type,
-                team: filters.team,
-              },
-              signal,
-            )
-        : demo
-        ? async (signal) =>
-            scaleProfiles(
-              await getProfilesBench(
-                {
-                  workloadId: effectiveWorkload,
-                  sinceHours: opts.sinceHours,
-                  framework: filters.framework,
-                  loop_type: filters.loop_type,
-                  team: filters.team,
-                },
-                signal,
-              ),
-              params,
-            )
-        : undefined,
+      benchLoader:
+        bench || demo
+          ? (signal) => getProfilesBench(benchParams, signal)
+          : undefined,
     },
   );
+  const truncated = useMemo<LoadState<ProfilesResponse>>(() => {
+    if (!demo) return state;
+    const cut = replay.cutoff;
+    if (replay.status !== "ready" || !cut) return holdForReplay(state, replay);
+    return mapState(state, (d) => ({
+      ...d,
+      events: truncateByCutoff(d.events, cut),
+    }));
+  }, [state, demo, replay.status, replay.cutoff, replay]);
+  return { state: truncated, refresh };
 }
 
 export function useEvents(
   opts: { rollbacksOnly?: boolean; sinceHours?: number; pollMs?: number } = {},
 ): { state: LoadState<EventsResponse>; refresh: () => void } {
   const { demo, bench } = useAuth();
-  const { params } = useDemoParams();
+  const replay = useDemoReplay();
   const { filters } = useFilters();
+  const benchParams = {
+    rollbacksOnly: opts.rollbacksOnly,
+    framework: filters.framework,
+    loop_type: filters.loop_type,
+    team: filters.team,
+    workload_id: filters.workload_id,
+  };
   const { state, refresh } = useApi<EventsResponse>(
     demo || bench
       ? null
-      : (c, signal) =>
-          getEvents(
-            c,
-            {
-              rollbacksOnly: opts.rollbacksOnly,
-              framework: filters.framework,
-              loop_type: filters.loop_type,
-              team: filters.team,
-              workload_id: filters.workload_id,
-            },
-            signal,
-          ),
+      : (c, signal) => getEvents(c, benchParams, signal),
     [
       opts.rollbacksOnly ?? false,
       filters.framework,
       filters.loop_type,
       filters.team,
       filters.workload_id,
-      demo ? params.eventsPerMonth : 0,
-      demo ? params.dollarsPerIter : 0,
     ],
     {
       pollMs: opts.pollMs,
-      benchLoader: bench
-        ? (signal) =>
-            getEventsBench(
-              {
-                rollbacksOnly: opts.rollbacksOnly,
-                framework: filters.framework,
-                loop_type: filters.loop_type,
-                team: filters.team,
-                workload_id: filters.workload_id,
-              },
-              signal,
-            )
-        : demo
-        ? async (signal) =>
-            scaleEvents(
-              await getEventsBench(
-                {
-                  rollbacksOnly: opts.rollbacksOnly,
-                  framework: filters.framework,
-                  loop_type: filters.loop_type,
-                  team: filters.team,
-                  workload_id: filters.workload_id,
-                },
-                signal,
-              ),
-              params,
-            )
-        : undefined,
+      benchLoader:
+        bench || demo
+          ? (signal) => getEventsBench(benchParams, signal)
+          : undefined,
     },
   );
+  // Demo replay truncation. The server orders by timestamp_hour DESC only
+  // (ids within an hour come back in arbitrary order), so re-sort DESC by
+  // (hour, id) — the replay reveals ids ascending within an hour, which
+  // makes the head of this list the most recently replayed run.
+  const replayed = useMemo<LoadState<EventsResponse>>(() => {
+    if (!demo) return state;
+    const cut = replay.cutoff;
+    if (replay.status !== "ready" || !cut) return holdForReplay(state, replay);
+    return mapState(state, (d) => ({
+      ...d,
+      events: truncateByCutoff(d.events, cut).sort((a, b) =>
+        a.timestamp_hour !== b.timestamp_hour
+          ? b.timestamp_hour - a.timestamp_hour
+          : (b.id ?? 0) - (a.id ?? 0),
+      ),
+    }));
+  }, [state, demo, replay.status, replay.cutoff, replay]);
   // The receiver doesn't accept a `since_hours` param on /v1/events, so we
   // apply the time-range filter client-side using `timestamp_hour`.
   const filtered = useMemo<LoadState<EventsResponse>>(() => {
-    if (opts.sinceHours == null) return state;
+    if (opts.sinceHours == null) return replayed;
     const since = Math.floor(Date.now() / 1000) - opts.sinceHours * 3600;
-    const apply = (d: EventsResponse): EventsResponse => ({
+    return mapState(replayed, (d) => ({
       ...d,
       events: d.events.filter((e) => e.timestamp_hour >= since),
-    });
-    if (state.status === "ok") return { ...state, data: apply(state.data) };
-    if (state.status === "loading" && state.previous)
-      return { ...state, previous: apply(state.previous) };
-    if (state.status === "error" && state.previous)
-      return { ...state, previous: apply(state.previous) };
-    return state;
-  }, [state, opts.sinceHours]);
+    }));
+  }, [replayed, opts.sinceHours]);
   return { state: filtered, refresh };
 }
 
@@ -272,9 +255,8 @@ export function useEventDetail(
     !demo && !bench && id !== null ? (c, signal) => getEventDetail(c, id, signal) : null,
     [id],
     {
-      // EventDetail passes through unchanged in demo mode — the
-      // per-iteration trajectory is the bench's measured one; replaying
-      // it at scale doesn't change the shape.
+      // EventDetail passes through unchanged in demo mode — it's the
+      // recorded run's own measured per-iteration trajectory.
       benchLoader:
         (bench || demo) && id !== null
           ? (signal) => getEventDetailBench(id, signal)

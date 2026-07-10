@@ -70,19 +70,19 @@ export function CommandPalette({
         label: "Toggle dark / light theme",
         action: toggleTheme,
       },
-      // Switch between the public projection (/demo) and the public
+      // Switch between the public replay (/demo) and the public
       // bench tenant (/benchmark). Both are URL-driven; navigating
       // changes the mode.
       {
         group: "Actions",
-        label: demo ? "View benchmark (receipts)" : "View demo (projection)",
+        label: demo ? "View benchmark (receipts)" : "View demo (live replay)",
         action: () => window.location.assign(demo ? "/benchmark" : "/demo"),
       },
       ...(bench
         ? [
             {
               group: "Actions",
-              label: "View demo (projection)",
+              label: "View demo (live replay)",
               action: () => window.location.assign("/demo"),
             },
           ]

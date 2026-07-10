@@ -1,29 +1,24 @@
-// Live REPLAY of recorded benchmark runs, for demo mode.
+// Live REPLAY of the recorded benchmark run, for demo mode.
 //
-// The demo's numbers are deterministic projections (see demo.ts) — nothing
-// moves, which reads as a static screenshot. This module adds motion the
-// honest way: it replays REAL recorded runs from the public benchmark
-// dataset, continuously — roughly two recorded runs per second, starting
-// the moment the first run's details are prefetched. No inference
-// happens; every error trajectory, band and iteration count shown was
-// measured when the bench actually ran. The UI labels this "LIVE REPLAY"
-// and must always pair the word "live" with "replay"/"recorded"
-// (claim-provenance rule; pinned by loopgain-verify
+// v3 (2026-07-10): the demo replays the REAL bench run from a checkpoint
+// near its end. On load the dashboard shows the true state the bench
+// tenant's dashboard was in after the first `N − REPLAY_TAIL` recorded
+// runs had landed; the remaining runs then arrive roughly one per second
+// in their true recorded order, and every panel accrues each run's own
+// measured deltas (the recompute lives in replay-core.ts — pure, pinned
+// by loopgain-verify dash.demo_checkpoint_truth). When the tail is
+// exhausted the replay loops back to the checkpoint.
+//
+// Honesty rail: no inference happens; every trajectory, band, iteration
+// count and dollar shown was measured when the bench actually ran. The UI
+// labels this "LIVE REPLAY" and must always pair the word "live" with
+// "replay"/"recorded" (claim-provenance rule; pinned by loopgain-verify
 // dash.demo_replay_provenance).
 //
-// At the demo's default mid-market scale (1M loop events/month ≈ 23 real
-// loops/minute) a sub-second reveal cadence is the right order of
-// magnitude for what a real operator would watch scroll past.
-//
-// Deliberately SEPARATE from demo-params: params are persisted,
-// seed-bearing buyer configuration (seedFromParams drives the stable
-// projection numbers); replay is ephemeral per-visit session state. The
-// pure transforms in demo.ts are not touched.
-//
-// Fetch pattern: ONE /v1/public/benchmark/events call, then a bounded
-// prefetch of ~40 event details (edge-cached ~5 min). The replay then
-// CYCLES that pool indefinitely — reshuffled each lap — so an open tab
-// generates ZERO sustained network traffic while staying in motion.
+// Fetch pattern: ONE full /v1/public/benchmark/events call (the receiver
+// serves the whole 2,000-run dataset; ~300KB, edge-cached ~5 min), then a
+// small rolling look-ahead of event-detail fetches (~1/s while playing,
+// cached across laps) that feeds the animated latest-run trajectory.
 
 import {
   createContext,
@@ -33,68 +28,66 @@ import {
   useState,
 } from "react";
 import { getEventDetailBench, getEventsBench, useAuth } from "./api";
+import {
+  checkpointIndex,
+  cutoffFor,
+  orderEvents,
+  type ReplayCutoff,
+} from "./replay-core";
 import type { EventDetail, LoopEvent } from "../types";
 
-export interface ReplayEvent {
+export interface ReplayLatest {
   event: LoopEvent;
-  detail: EventDetail;
+  detail: EventDetail | null;
   /** Wall-clock ms when this recorded run was revealed this session. */
   revealedAt: number;
 }
 
-/** Cumulative real deltas from every run replayed this session — each
- *  increment is the actual recorded run's own numbers, so panels that
- *  accrue these are adding what a live dashboard would have added when
- *  that run's telemetry landed. */
-export interface ReplaySession {
-  runs: number;
-  iterations: number;
-  savedIterations: number;
-  rollbacks: number;
-  /** Terminal outcome counts (converged / diverged / oscillating / …). */
-  outcomes: Record<string, number>;
-}
-
 export interface DemoReplay {
-  /** True in demo mode once at least one recorded run is ready. */
+  /** True in demo mode once the recorded run is loaded. */
   enabled: boolean;
-  /** Recently revealed recorded runs, newest first (capped — use
-   *  `session` for cumulative numbers). */
-  revealed: ReadonlyArray<ReplayEvent>;
+  /** pending until the events list resolves; failed = no replay this
+   *  visit (data-hooks fall back to full-run pass-through). */
+  status: "pending" | "ready" | "failed";
+  /** The full recorded run in true arrival order (ascending). */
+  ordered: ReadonlyArray<LoopEvent>;
+  /** Index of the first replayed event — everything before it is the
+   *  checkpoint state shown on load. */
+  checkpoint: number;
+  /** checkpoint + runs revealed so far this lap (≤ ordered.length). */
+  visibleCount: number;
+  /** Chronological cutoff for truncating any fetched row set. */
+  cutoff: ReplayCutoff | null;
   /** The most recently revealed run (drives the animated trajectory). */
-  latest: ReplayEvent | null;
-  session: ReplaySession;
+  latest: ReplayLatest | null;
+  /** id → wall-clock reveal ms for runs revealed this lap (drives the
+   *  feed's entrance animation + "replayed Ns ago" labels). */
+  revealedMap: ReadonlyMap<number, number>;
+  /** Completed laps through the tail (0 on the first pass). */
+  lap: number;
 }
-
-const EMPTY_SESSION: ReplaySession = {
-  runs: 0,
-  iterations: 0,
-  savedIterations: 0,
-  rollbacks: 0,
-  outcomes: {},
-};
 
 const DISABLED: DemoReplay = {
   enabled: false,
-  revealed: [],
+  status: "pending",
+  ordered: [],
+  checkpoint: 0,
+  visibleCount: 0,
+  cutoff: null,
   latest: null,
-  session: EMPTY_SESSION,
+  revealedMap: new Map(),
+  lap: 0,
 };
 
-/** Pool of distinct recorded runs to cycle through. Big enough that a
- *  viewer never notices the lap boundary (a full lap at ~2 runs/s is
- *  ~20s of distinct runs, reshuffled each lap). */
-const POOL_SIZE = 40;
-const PREFETCH_CONCURRENCY = 4;
-/** ~2 recorded runs per second, lightly jittered so it reads organic. */
-const TICK_BASE_MS = 400;
-const TICK_JITTER_MS = 250;
-/** First reveal should land as soon as the first detail is prefetched. */
-const FIRST_TICK_MS = 250;
-/** Retry cadence when the ticker outruns the prefetcher. */
-const WAIT_FOR_PREFETCH_MS = 400;
-/** Feed only needs the recent tail; cumulative stats live in `session`. */
-const REVEALED_CAP = 40;
+/** ~1 recorded run per second, lightly jittered so it reads organic. */
+const TICK_BASE_MS = 950;
+const TICK_JITTER_MS = 150;
+/** First reveal lands almost immediately after the checkpoint renders. */
+const FIRST_TICK_MS = 300;
+/** Detail look-ahead: how many upcoming runs to keep prefetched for the
+ *  trajectory animation. Small — steady state is ~1 request/s, and the
+ *  cache makes laps after the first free. */
+const DETAIL_LOOKAHEAD = 6;
 
 export const DemoReplayContext = createContext<DemoReplay>(DISABLED);
 
@@ -102,102 +95,74 @@ export function useDemoReplay(): DemoReplay {
   return useContext(DemoReplayContext);
 }
 
-/** Fisher–Yates with Math.random — per-visit randomness is the point
- *  (unlike demo.ts's seeded RNG, which must be stable across renders). */
-function shuffle<T>(arr: T[]): T[] {
-  const out = [...arr];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [out[i], out[j]] = [out[j]!, out[i]!];
-  }
-  return out;
-}
-
-/** Provider state machine: stream the pool in the background (demo only),
- *  then reveal recorded runs on a sub-second ticker while the tab is
- *  visible, cycling the pool indefinitely. */
+/** Provider state machine: load the recorded run once, render the
+ *  checkpoint, then reveal one run per second while the tab is visible,
+ *  looping the tail forever. */
 export function useDemoReplayProvider(): DemoReplay {
   const { demo } = useAuth();
-  // The pool grows as details land; refs so the ticker never re-arms on
-  // growth (re-arming would reset the pending tick each time).
-  const poolRef = useRef<ReplayEvent[]>([]);
-  const buildDone = useRef(false);
-  // Index into the current lap's order; laps reshuffle.
-  const orderRef = useRef<number[]>([]);
-  const cursorRef = useRef(0);
-  const [poolReady, setPoolReady] = useState(0);
-  const [revealed, setRevealed] = useState<ReplayEvent[]>([]);
-  const [session, setSession] = useState<ReplaySession>(EMPTY_SESSION);
+  const [status, setStatus] = useState<DemoReplay["status"]>("pending");
+  const [ordered, setOrdered] = useState<LoopEvent[]>([]);
+  const [visibleCount, setVisibleCount] = useState(0);
+  const [lap, setLap] = useState(0);
+  const [latest, setLatest] = useState<ReplayLatest | null>(null);
+  const checkpointRef = useRef(0);
+  // Detail cache persists across laps — the second lap is fetch-free.
+  const detailsRef = useRef(new Map<number, EventDetail>());
+  const pendingDetailRef = useRef(new Set<number>());
+  const revealedMapRef = useRef(new Map<number, number>());
 
-  // Background pool builder — once per visit.
+  // ── Load the recorded run (once per visit) ─────────────────────────
   useEffect(() => {
     if (!demo) return;
     const ctrl = new AbortController();
-    poolRef.current = [];
-    orderRef.current = [];
-    cursorRef.current = 0;
-    buildDone.current = false;
-
-    async function build(): Promise<void> {
-      const res = await getEventsBench({}, ctrl.signal);
-      const seen = new Set<number>();
-      const candidates = shuffle(
-        res.events.filter((e) => {
-          if (e.id == null || seen.has(e.id)) return false;
-          seen.add(e.id);
-          return true;
-        }),
-      );
-      let cursor = 0;
-      async function worker(): Promise<void> {
-        while (cursor < candidates.length && poolRef.current.length < POOL_SIZE) {
-          const event = candidates[cursor++]!;
-          try {
-            const detail = (await getEventDetailBench(event.id!, ctrl.signal)).event;
-            if (detail.per_iteration && poolRef.current.length < POOL_SIZE) {
-              poolRef.current.push({ event, detail, revealedAt: 0 });
-              setPoolReady(poolRef.current.length);
-            }
-          } catch {
-            // One failed detail fetch shouldn't kill the replay — skip it.
-            if (ctrl.signal.aborted) return;
-          }
+    getEventsBench({}, ctrl.signal)
+      .then((res) => {
+        if (ctrl.signal.aborted) return;
+        const run = orderEvents(res.events);
+        if (run.length === 0) {
+          setStatus("failed");
+          return;
         }
-      }
-      await Promise.all(
-        Array.from({ length: PREFETCH_CONCURRENCY }, () => worker()),
-      );
-    }
-
-    void build()
-      .catch(() => {
-        /* replay is progressive enhancement — a failed build means no motion */
+        checkpointRef.current = checkpointIndex(run.length);
+        setOrdered(run);
+        setVisibleCount(checkpointRef.current);
+        setStatus("ready");
       })
-      .finally(() => {
-        buildDone.current = true;
-        setPoolReady(poolRef.current.length);
+      .catch(() => {
+        if (!ctrl.signal.aborted) setStatus("failed");
       });
     return () => ctrl.abort();
   }, [demo]);
 
-  // Ticker — reveal while visible; wait briefly when the prefetcher is
-  // behind; pause when hidden; cycle the pool forever (reshuffled laps).
+  // ── Ticker: reveal while visible, loop the tail, prefetch ahead ────
   useEffect(() => {
-    if (!demo) return;
+    if (!demo || status !== "ready" || ordered.length === 0) return;
     let timer: number | null = null;
     let cancelled = false;
+    const checkpoint = checkpointRef.current;
 
-    function nextFromPool(): ReplayEvent | null {
-      const pool = poolRef.current;
-      if (pool.length === 0) return null;
-      // Start a new (re)shuffled lap when the order is exhausted or the
-      // pool has grown past the current lap's snapshot.
-      if (cursorRef.current >= orderRef.current.length) {
-        orderRef.current = shuffle(pool.map((_, i) => i));
-        cursorRef.current = 0;
+    function prefetchAhead(from: number): void {
+      for (
+        let i = from;
+        i < Math.min(from + DETAIL_LOOKAHEAD, ordered.length);
+        i++
+      ) {
+        const id = ordered[i]?.id;
+        if (id == null || detailsRef.current.has(id) || pendingDetailRef.current.has(id)) {
+          continue;
+        }
+        pendingDetailRef.current.add(id);
+        getEventDetailBench(id)
+          .then((res) => {
+            detailsRef.current.set(id, res.event);
+          })
+          .catch(() => {
+            /* a missed detail only skips one trajectory animation */
+          })
+          .finally(() => {
+            pendingDetailRef.current.delete(id);
+          });
       }
-      const idx = orderRef.current[cursorRef.current++]!;
-      return pool[idx] ?? null;
     }
 
     function schedule(delay: number): void {
@@ -212,25 +177,26 @@ export function useDemoReplayProvider(): DemoReplay {
         timer = null;
         return;
       }
-      const next = nextFromPool();
-      if (!next) {
-        if (!buildDone.current) schedule(WAIT_FOR_PREFETCH_MS);
-        // else: pool never materialized — no motion this visit.
-        return;
-      }
-      const stamped = { ...next, revealedAt: Date.now() };
-      setRevealed((prev) => [stamped, ...prev].slice(0, REVEALED_CAP));
-      setSession((s) => ({
-        runs: s.runs + 1,
-        iterations: s.iterations + stamped.event.iterations_used,
-        savedIterations: s.savedIterations + (stamped.event.savings_vs_fixed_cap ?? 0),
-        rollbacks:
-          s.rollbacks + (stamped.detail.rollback_triggered ? 1 : 0),
-        outcomes: {
-          ...s.outcomes,
-          [stamped.event.outcome]: (s.outcomes[stamped.event.outcome] ?? 0) + 1,
-        },
-      }));
+      setVisibleCount((count) => {
+        let next = count + 1;
+        if (next > ordered.length) {
+          // Tail exhausted — loop back to the checkpoint for a new lap.
+          revealedMapRef.current = new Map();
+          setLap((l) => l + 1);
+          next = checkpoint + 1;
+        }
+        const revealed = ordered[next - 1]!;
+        if (revealed.id != null) {
+          revealedMapRef.current.set(revealed.id, Date.now());
+        }
+        setLatest({
+          event: revealed,
+          detail: revealed.id != null ? detailsRef.current.get(revealed.id) ?? null : null,
+          revealedAt: Date.now(),
+        });
+        prefetchAhead(next);
+        return next;
+      });
       schedule(TICK_BASE_MS + Math.random() * TICK_JITTER_MS);
     }
 
@@ -240,6 +206,7 @@ export function useDemoReplayProvider(): DemoReplay {
       }
     }
 
+    prefetchAhead(checkpoint);
     schedule(FIRST_TICK_MS);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
@@ -247,13 +214,18 @@ export function useDemoReplayProvider(): DemoReplay {
       if (timer !== null) window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [demo]);
+  }, [demo, status, ordered]);
 
   if (!demo) return DISABLED;
   return {
-    enabled: poolReady > 0,
-    revealed,
-    latest: revealed[0] ?? null,
-    session,
+    enabled: status === "ready",
+    status,
+    ordered,
+    checkpoint: checkpointRef.current,
+    visibleCount,
+    cutoff: status === "ready" ? cutoffFor(ordered, visibleCount) : null,
+    latest,
+    revealedMap: revealedMapRef.current,
+    lap,
   };
 }

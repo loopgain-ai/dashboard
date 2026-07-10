@@ -16,7 +16,8 @@ import { loopRouteId } from "../shell/routes";
 import type { RouteId, TimeRange } from "../shell";
 import { useAuth, useProvenance, useWindowSuffix, type LoadState } from "../../lib/api";
 import { leadWithPct, spendEliminatedPct } from "../../lib/receipt";
-import { useDemoReplay, type ReplayEvent } from "../../lib/demo-replay";
+import { useDemoReplay, type ReplayLatest } from "../../lib/demo-replay";
+import { runPulse } from "../../lib/replay-core";
 import type { EventDetailResponse, LoopEvent, Outcome, StatsResponse } from "../../types";
 
 // Visual mapping for the outcome strip. Drives the five-pill row in the
@@ -133,27 +134,28 @@ function OverviewBody({
   const { demo, bench } = useAuth();
   // Bench/demo read the static benchmark dataset all-time (the receiver's
   // public routes force sinceEpoch=0), so the "Fleet · 30d" eyebrow would
-  // mislabel the window there.
-  const windowLabel = demo || bench ? "bench dataset · all-time" : timeRange;
+  // mislabel the window there. Demo names the replay explicitly.
+  const windowLabel = demo
+    ? "recorded benchmark run · live replay"
+    : bench
+    ? "bench dataset · all-time"
+    : timeRange;
   const windowSuffix = useWindowSuffix();
-  // Live replay (demo only): recorded benchmark runs revealing about twice
-  // a second. `session` carries the CUMULATIVE real deltas of every run
-  // replayed this visit — each increment below is that recorded run's own
-  // iterations/outcome/savings, i.e. exactly what a live dashboard would
-  // have added when that run's telemetry landed.
+  // Live replay (demo only): the recorded benchmark run playing back from
+  // a checkpoint, ~1 run/second. In demo the `stats` and `events` props
+  // are ALREADY truncated to the replay's position (see data-hooks +
+  // replay-core), so every figure below moves on its own as runs land —
+  // no session bookkeeping here.
   const replay = useDemoReplay();
-  const session = replay.session;
   // Outcome counts come straight from /v1/stats.outcomes — tenant-wide,
   // not sample-biased. Outcomes are the terminal state recorded by the
-  // library; the receiver SUMs them on every event in window. Replayed
-  // recorded runs accrue on top in demo.
+  // library; the receiver SUMs them on every event in window.
   const outcomeCounts = useMemo<Record<string, number>>(() => {
     const c: Record<string, number> = {};
     for (const row of stats.outcomes) c[row.outcome] = row.count;
-    for (const [k, v] of Object.entries(session.outcomes)) c[k] = (c[k] ?? 0) + v;
     return c;
-  }, [stats.outcomes, session.outcomes]);
-  const totalEvents = (stats.totals?.event_count ?? events.length) + session.runs;
+  }, [stats.outcomes]);
+  const totalEvents = stats.totals?.event_count ?? events.length;
   // % CONVERGED — single-scalar fleet-health signal feeding the RingGauge
   // on the left card. Sourced from /v1/stats.outcomes server-side counts
   // (not the recency-biased /events sample), so the gauge reflects
@@ -178,31 +180,12 @@ function OverviewBody({
   const attentionCount =
     (outcomeCounts["oscillating"] ?? 0) + (outcomeCounts["diverged"] ?? 0);
   const hasDiverged = (outcomeCounts["diverged"] ?? 0) > 0;
-  const baseTotals = stats.totals ?? {
+  const totals: NonNullable<StatsResponse["totals"]> = stats.totals ?? {
     event_count: 0,
     total_iterations: 0,
     total_savings: 0,
     rollbacks: 0,
   };
-  // Accrue the replayed runs' real deltas so every counter on the panel
-  // moves as recorded runs come in (demo). Dollars accrue at the demo's
-  // $/iter on the run's real avoided iterations.
-  const totals = useMemo(() => {
-    if (session.runs === 0) return baseTotals;
-    return {
-      ...baseTotals,
-      event_count: baseTotals.event_count + session.runs,
-      total_iterations: baseTotals.total_iterations + session.iterations,
-      total_savings: baseTotals.total_savings + session.savedIterations,
-      rollbacks: baseTotals.rollbacks + session.rollbacks,
-      total_actual_dollars_saved:
-        typeof baseTotals.total_actual_dollars_saved === "number"
-          ? baseTotals.total_actual_dollars_saved +
-            session.savedIterations * costPerIter
-          : baseTotals.total_actual_dollars_saved,
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stats.totals, session, costPerIter]);
   // Prefer the receiver's SUM(actual_dollars_saved) when present — that's
   // the tenant's real, measured paired-baseline delta (bench has this from
   // running every workload under B20 and LG). For tenants without paired
@@ -242,6 +225,20 @@ function OverviewBody({
   // Bucketing uses `timestamp_hour` (unix seconds at the hour the event
   // was attributed to by the library — already truncated to the hour).
   const fleetPulse = useMemo(() => {
+    // Demo replay: the true recorded arrival timeline. `events` is the
+    // visible prefix of the run, so the buckets are exactly the hourly
+    // counts the bench operator's pulse showed at this point — the
+    // current hour's bar grows by one with every replayed run.
+    if (demo) {
+      const pulse = runPulse(events);
+      return {
+        mode: "run-timeline" as const,
+        buckets: pulse.map((b) => b.count),
+        bucketHours: 1,
+        label: "Benchmark run pulse · loop events / hour",
+        caption: "true recorded arrival hours · replay compresses the clock" as string | null,
+      };
+    }
     const STALE_AFTER_S = 24 * 3600;
     const nowS = Math.floor(Date.now() / 1000);
 
@@ -299,27 +296,23 @@ function OverviewBody({
       label: `Recent activity · ${bucketHours}h buckets`,
       caption: `data window: most recent ${spanLabel} · ${bucketCount} buckets`,
     };
-  }, [events]);
+  }, [events, demo]);
 
   // Recent transitions: 8 most recent events with their classified band.
-  // Replayed recorded runs (demo) prepend, newest first.
+  // In demo the events prop's head IS the most recently replayed run —
+  // rows revealed this session animate in and show their reveal time.
   const transitions = useMemo(() => {
-    const replayRows = replay.revealed.map((r) => ({
-      ts: r.revealedAt,
-      band: bandFromEvent(r.event),
-      workloadId: r.event.workload_id ?? "—",
-      iterations: r.event.iterations_used,
-      isReplay: true,
-    }));
-    const sampleRows = events.slice(0, 8).map((e) => ({
-      ts: e.timestamp_hour * 1000,
-      band: bandFromEvent(e),
-      workloadId: e.workload_id ?? "—",
-      iterations: e.iterations_used,
-      isReplay: false,
-    }));
-    return [...replayRows, ...sampleRows].slice(0, 8);
-  }, [events, replay.revealed]);
+    return events.slice(0, 8).map((e) => {
+      const revealedAt = e.id != null ? replay.revealedMap.get(e.id) : undefined;
+      return {
+        ts: revealedAt ?? e.timestamp_hour * 1000,
+        band: bandFromEvent(e),
+        workloadId: e.workload_id ?? "—",
+        iterations: e.iterations_used,
+        isReplay: revealedAt != null,
+      };
+    });
+  }, [events, replay.revealedMap, replay.visibleCount]);
 
   // Latest-trajectory selection. Prefer the most recent attention-worthy
   // run (OSCILLATING / DIVERGING) so an operator opens to the run they'd
@@ -335,18 +328,13 @@ function OverviewBody({
     });
     return attention ?? withId[0] ?? null;
   }, [events]);
-  const trajectoryDetail = useEventDetail(replay.latest ? null : trajectoryEvent?.id ?? null);
+  // The animated replay trajectory needs the revealed run's detail; when
+  // the prefetcher hasn't caught up yet, fall back to the static path.
+  const replayLatest =
+    replay.latest && replay.latest.detail ? replay.latest : null;
+  const trajectoryDetail = useEventDetail(replayLatest ? null : trajectoryEvent?.id ?? null);
 
-  // Pulse buckets, with the current bucket ticking up as recorded runs
-  // replay (raw-count regime — replayed runs are real recorded events).
-  const pulseBuckets = useMemo(() => {
-    if (session.runs === 0 || fleetPulse.mode !== "rolling-24h") {
-      return fleetPulse.buckets;
-    }
-    const b = [...fleetPulse.buckets];
-    b[b.length - 1] = (b[b.length - 1] ?? 0) + session.runs;
-    return b;
-  }, [fleetPulse, session.runs]);
+  const pulseBuckets = fleetPulse.buckets;
 
   return (
     <>
@@ -444,7 +432,7 @@ function OverviewBody({
           >
             <div className="label">
               {windowSuffix} · saved by LoopGain
-              {savedProv.mode !== "measured" && (
+              {(demo || savedProv.mode !== "measured") && (
                 <span
                   className="mono"
                   style={{
@@ -453,12 +441,12 @@ function OverviewBody({
                     padding: "2px 6px",
                     borderRadius: 3,
                     background:
-                      savedProv.mode === "projected"
-                        ? "color-mix(in oklab, var(--band-stall) 16%, transparent)"
+                      savedProv.mode === "measured"
+                        ? "color-mix(in oklab, var(--band-fast) 18%, transparent)"
                         : "var(--surf-3)",
                     color:
-                      savedProv.mode === "projected"
-                        ? "var(--band-stall)"
+                      savedProv.mode === "measured"
+                        ? "var(--band-fast)"
                         : "var(--text-3)",
                     letterSpacing: "0.04em",
                   }}
@@ -538,15 +526,7 @@ function OverviewBody({
                   color: "var(--text-3)",
                 }}
               >
-                {[
-                  fleetPulse.caption,
-                  // The pulse counts RAW sample events — deliberately not
-                  // scaled to the fleet slider (scaled per-hour bars would
-                  // fabricate volume precision), so say so in demo.
-                  demo ? "activity pattern · representative sample of recorded runs" : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
+                {fleetPulse.caption}
               </div>
             )}
             <div style={{ marginTop: 10 }}>
@@ -578,12 +558,12 @@ function OverviewBody({
               <h3 style={{ margin: 0, fontSize: 13, fontWeight: 500 }}>
                 Latest run trajectory
               </h3>
-              {replay.latest ? (
+              {replayLatest ? (
                 <>
-                  <StatePill band={bandFromEvent(replay.latest.event)} size="sm" />
+                  <StatePill band={bandFromEvent(replayLatest.event)} size="sm" />
                   <span className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>
-                    {replay.latest.event.workload_id ?? "—"} · recorded run ·
-                    replayed {fmtRel(replay.latest.revealedAt)}
+                    {replayLatest.event.workload_id ?? "—"} · recorded run ·
+                    replayed {fmtRel(replayLatest.revealedAt)}
                   </span>
                 </>
               ) : (
@@ -602,14 +582,14 @@ function OverviewBody({
                 </>
               )}
             </div>
-            {(replay.latest?.event.workload_id ?? trajectoryEvent?.workload_id) && (
+            {(replayLatest?.event.workload_id ?? trajectoryEvent?.workload_id) && (
               <button
                 type="button"
                 className="chip"
                 onClick={() =>
                   setRoute(
                     loopRouteId(
-                      (replay.latest?.event.workload_id ??
+                      (replayLatest?.event.workload_id ??
                         trajectoryEvent?.workload_id) as string,
                     ),
                   )
@@ -620,8 +600,8 @@ function OverviewBody({
               </button>
             )}
           </div>
-          {replay.latest ? (
-            <ReplayTrajectory replay={replay.latest} />
+          {replayLatest ? (
+            <ReplayTrajectory replay={replayLatest} />
           ) : (
             <TrajectoryCardBody
               detailState={trajectoryDetail.state}
@@ -733,9 +713,9 @@ function OverviewBody({
             </div>
             <span className="mono" style={{ fontSize: 10.5, color: "var(--text-3)" }}>
               {replay.enabled
-                ? `${session.runs} recorded ${
-                    session.runs === 1 ? "run" : "runs"
-                  } replayed this session`
+                ? `run ${fmtInt(replay.visibleCount)} of ${fmtInt(
+                    replay.ordered.length,
+                  )} · recorded benchmark replay`
                 : `${transitions.length} events`}
             </span>
           </div>
@@ -937,11 +917,11 @@ function TrajectoryCardBody({
 }
 
 /** Animated replay of a recorded run's per-iteration trajectory: the
- *  error/Aβ trace draws in iteration by iteration (~300ms each), so a
- *  demo visitor watches the loop "run" — with data that was measured
- *  when the benchmark actually ran, not generated now. */
-function ReplayTrajectory({ replay }: { replay: ReplayEvent }) {
-  const pit = replay.detail.per_iteration;
+ *  error/Aβ trace draws in iteration by iteration, so a demo visitor
+ *  watches the loop "run" — with data that was measured when the
+ *  benchmark actually ran, not generated now. */
+function ReplayTrajectory({ replay }: { replay: ReplayLatest }) {
+  const pit = replay.detail?.per_iteration ?? null;
   const n = pit?.error_history.length ?? 0;
   const [drawn, setDrawn] = useState(1);
 
