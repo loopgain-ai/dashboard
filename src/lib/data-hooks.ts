@@ -32,7 +32,7 @@ import {
 } from "./api";
 import { useFilters } from "./filters";
 import { useDemoReplay, type DemoReplay } from "./demo-replay";
-import { statsFromEvents, truncateByCutoff } from "./replay-core";
+import { matchesFilters, statsFromEvents, truncateByCutoff } from "./replay-core";
 import { demoAlertDeliveries, demoAlertRules } from "./demo";
 import type {
   AlertDeliveriesResponse,
@@ -64,13 +64,22 @@ function holdForReplay<T>(state: LoadState<T>, replay: DemoReplay): LoadState<T>
 }
 
 export function useStats(
-  opts: { pollMs?: number; includeCalibration?: boolean } = {},
+  opts: {
+    pollMs?: number;
+    includeCalibration?: boolean;
+    /** Skip the demo-mode filter application. The FilterBar's own
+     *  dropdowns (and the command palette's workload list) need the
+     *  UNfiltered option sets — feeding them filtered stats would
+     *  collapse every other option the moment one is picked. */
+    unfiltered?: boolean;
+  } = {},
 ): {
   state: LoadState<StatsResponse>;
   refresh: () => void;
 } {
   const { demo, bench } = useAuth();
   const replay = useDemoReplay();
+  const { filters } = useFilters();
   const { state, refresh } = useApi<StatsResponse>(
     demo || bench
       ? null
@@ -82,16 +91,30 @@ export function useStats(
     },
   );
   // Demo: recompute the aggregates over the replay's visible prefix of
-  // the recorded run. Full prefix (= whole run) reproduces the served
-  // stats exactly — pinned by loopgain-verify dash.demo_checkpoint_truth.
+  // the recorded run — respecting the active classification filters, so
+  // the gauge/heroes/KPIs move with the filter bar like everything else.
+  // Full unfiltered prefix (= whole run) reproduces the served stats
+  // exactly — pinned by loopgain-verify dash.demo_checkpoint_truth.
   const truncated = useMemo<LoadState<StatsResponse>>(() => {
     if (!demo) return state;
     if (replay.status !== "ready" || !replay.cutoff) {
       return holdForReplay(state, replay);
     }
-    const visible = replay.ordered.slice(0, replay.visibleCount);
+    let visible = replay.ordered.slice(0, replay.visibleCount);
+    if (!opts.unfiltered) {
+      visible = visible.filter((e) => matchesFilters(e, filters));
+    }
     return mapState(state, (d) => statsFromEvents(visible, d));
-  }, [state, demo, replay.status, replay.cutoff, replay.ordered, replay.visibleCount]);
+  }, [
+    state,
+    demo,
+    replay.status,
+    replay.cutoff,
+    replay.ordered,
+    replay.visibleCount,
+    filters,
+    opts.unfiltered,
+  ]);
   return { state: truncated, refresh };
 }
 

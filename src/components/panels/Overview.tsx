@@ -17,7 +17,8 @@ import type { RouteId, TimeRange } from "../shell";
 import { useAuth, useProvenance, useWindowSuffix, type LoadState } from "../../lib/api";
 import { leadWithPct, spendEliminatedPct } from "../../lib/receipt";
 import { useDemoReplay, type ReplayLatest } from "../../lib/demo-replay";
-import { runPulse } from "../../lib/replay-core";
+import { matchesFilters, savingsAccrual } from "../../lib/replay-core";
+import { useFilters } from "../../lib/filters";
 import type { EventDetailResponse, LoopEvent, Outcome, StatsResponse } from "../../types";
 
 // Visual mapping for the outcome strip. Drives the five-pill row in the
@@ -225,18 +226,21 @@ function OverviewBody({
   // Bucketing uses `timestamp_hour` (unix seconds at the hour the event
   // was attributed to by the library — already truncated to the hour).
   const fleetPulse = useMemo(() => {
-    // Demo replay: the true recorded arrival timeline. `events` is the
-    // visible prefix of the run, so the buckets are exactly the hourly
-    // counts the bench operator's pulse showed at this point — the
-    // current hour's bar grows by one with every replayed run.
+    // Demo replay: cumulative measured savings, one point per recorded
+    // run — the line's tip moves with EVERY replayed loop. (An
+    // arrival-rate chart can't be "live" here: the replay reveals runs
+    // at a constant ~1/s, so per-time arrivals would be a flat line.)
+    // `events` is the visible prefix (already filter-aware), newest
+    // first — reverse into run order for the accrual.
     if (demo) {
-      const pulse = runPulse(events);
+      const accrual = savingsAccrual([...events].reverse());
       return {
-        mode: "run-timeline" as const,
-        buckets: pulse.map((b) => b.count),
-        bucketHours: 1,
-        label: "Benchmark run pulse · loop events / hour",
-        caption: "true recorded arrival hours · replay compresses the clock" as string | null,
+        mode: "savings-accrual" as const,
+        buckets: accrual,
+        bucketHours: 0,
+        label: "Savings accrual · measured $ · every run",
+        caption:
+          "each replayed run adds its own measured paired-baseline savings" as string | null,
       };
     }
     const STALE_AFTER_S = 24 * 3600;
@@ -329,9 +333,16 @@ function OverviewBody({
     return attention ?? withId[0] ?? null;
   }, [events]);
   // The animated replay trajectory needs the revealed run's detail; when
-  // the prefetcher hasn't caught up yet, fall back to the static path.
+  // the prefetcher hasn't caught up yet — or the just-replayed run
+  // doesn't match the active filters — fall back to the static path so
+  // the trajectory card stays coherent with the rest of the screen.
+  const { filters } = useFilters();
   const replayLatest =
-    replay.latest && replay.latest.detail ? replay.latest : null;
+    replay.latest &&
+    replay.latest.detail &&
+    matchesFilters(replay.latest.event, filters)
+      ? replay.latest
+      : null;
   const trajectoryDetail = useEventDetail(replayLatest ? null : trajectoryEvent?.id ?? null);
 
   const pulseBuckets = fleetPulse.buckets;
@@ -499,6 +510,10 @@ function OverviewBody({
               marginTop: 8,
               padding: "12px 0 0 0",
               borderTop: "1px solid var(--border)",
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              minHeight: 0,
             }}
           >
             <div
@@ -510,11 +525,25 @@ function OverviewBody({
             >
               <div className="label">{fleetPulse.label}</div>
               <div className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>
-                peak <span style={{ color: "var(--text-1)" }}>{Math.max(...pulseBuckets)}</span>
-                {" · total "}
-                <span style={{ color: "var(--text-1)" }}>
-                  {pulseBuckets.reduce((s, v) => s + v, 0)}
-                </span>
+                {fleetPulse.mode === "savings-accrual" ? (
+                  <>
+                    {"so far "}
+                    <span style={{ color: "var(--text-1)" }}>
+                      {fmtUSD(pulseBuckets[pulseBuckets.length - 1] ?? 0, { cents: true })}
+                    </span>
+                    {" · "}
+                    <span style={{ color: "var(--text-1)" }}>{pulseBuckets.length}</span>
+                    {" runs"}
+                  </>
+                ) : (
+                  <>
+                    peak <span style={{ color: "var(--text-1)" }}>{Math.max(...pulseBuckets)}</span>
+                    {" · total "}
+                    <span style={{ color: "var(--text-1)" }}>
+                      {pulseBuckets.reduce((s, v) => s + v, 0)}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
             {(fleetPulse.caption || demo) && (
@@ -529,15 +558,17 @@ function OverviewBody({
                 {fleetPulse.caption}
               </div>
             )}
-            <div style={{ marginTop: 10 }}>
-              <Sparkline
-                data={pulseBuckets}
-                width={680}
-                height={88}
-                color="var(--accent)"
-                strokeWidth={1.5}
-                responsive
-              />
+            <div style={{ marginTop: 10, flex: 1, minHeight: 96, display: "flex" }}>
+              <div style={{ flex: 1, alignSelf: "stretch" }}>
+                <Sparkline
+                  data={pulseBuckets}
+                  width={680}
+                  height={150}
+                  color="var(--accent)"
+                  strokeWidth={1.5}
+                  responsive
+                />
+              </div>
             </div>
           </div>
         </div>

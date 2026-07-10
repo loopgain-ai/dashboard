@@ -264,3 +264,38 @@ export function runPulse(
   }
   return out;
 }
+
+/** Classification-filter predicate — the same exact-match semantics the
+ *  receiver's classificationFilters applies in SQL, so demo-mode
+ *  client-side filtering agrees with the server-filtered events routes. */
+export function matchesFilters(
+  e: LoopEvent,
+  f: {
+    framework?: string;
+    loop_type?: string;
+    team?: string;
+    workload_id?: string;
+  },
+): boolean {
+  if (f.framework != null && e.framework !== f.framework) return false;
+  if (f.loop_type != null && e.loop_type !== f.loop_type) return false;
+  if (f.team != null && e.team !== f.team) return false;
+  if (f.workload_id != null && e.workload_id !== f.workload_id) return false;
+  return true;
+}
+
+/** Cumulative measured savings across the run so far — one point per
+ *  visible run, so the demo's live chart moves with EVERY replayed loop
+ *  (an arrival-rate chart would be a flat line at the replay's constant
+ *  ~1 run/s cadence). The last point equals the truncated stats hero's
+ *  total_actual_dollars_saved by construction — same column, same
+ *  prefix (pinned by dash.demo_checkpoint_truth). */
+export function savingsAccrual(visible: ReadonlyArray<LoopEvent>): number[] {
+  const out: number[] = new Array(visible.length);
+  let sum = 0;
+  for (let i = 0; i < visible.length; i++) {
+    sum += visible[i]!.actual_dollars_saved ?? 0;
+    out[i] = sum;
+  }
+  return out;
+}

@@ -67,7 +67,9 @@ function Dropdown({ label, field, options }: DropdownProps) {
 
 export function FilterBar() {
   const { filters, clear, active } = useFilters();
-  const stats = useStats();
+  // unfiltered: the dropdowns list ALL option values — filtered stats
+  // would collapse every other option once one is selected (demo mode).
+  const stats = useStats({ unfiltered: true });
   const data =
     stats.state.status === "ok"
       ? stats.state.data

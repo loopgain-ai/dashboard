@@ -13,7 +13,12 @@ import "./styles/index.css";
 // own tenant.
 if (typeof window !== "undefined") {
   const p = window.location.pathname;
-  const isPublicRoute = p.startsWith("/demo") || p.startsWith("/benchmark");
+  const isPublicRoute =
+    p.startsWith("/demo") ||
+    p.startsWith("/benchmark") ||
+    // Account pages — the front door for every "get a token" CTA.
+    p.startsWith("/signup") ||
+    p.startsWith("/login");
   // ?connect=1 is the "Exit demo → connect your own tenant" path: the
   // visitor deliberately left /demo for the onboarding screen, so don't
   // bounce them straight back (App auto-opens the ConnectDialog).

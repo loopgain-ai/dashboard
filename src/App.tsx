@@ -11,6 +11,7 @@ import { FilterContext, useFiltersProvider } from "./lib/filters";
 import { DemoReplayContext, useDemoReplayProvider } from "./lib/demo-replay";
 import { useStats } from "./lib/data-hooks";
 import { ConnectDialog } from "./components/auth/ConnectDialog";
+import { LoginPage, SignupPage } from "./components/auth/AccountPages";
 import { MethodologyModal } from "./components/auth/MethodologyModal";
 import {
   BottomNav,
@@ -64,6 +65,17 @@ function loadIncludeCalibration(): boolean {
 }
 
 export function App() {
+  // Account pages render standalone — no dashboard shell, no data
+  // providers. Decided once from the URL, like /demo and /benchmark.
+  if (typeof window !== "undefined") {
+    const p = window.location.pathname;
+    if (p.startsWith("/signup")) return <SignupPage />;
+    if (p.startsWith("/login")) return <LoginPage />;
+  }
+  return <AppProviders />;
+}
+
+function AppProviders() {
   const auth = useAuthProvider();
   const filters = useFiltersProvider();
   return (
@@ -154,8 +166,8 @@ function AppInner() {
   // costPerIter is unreachable there. Authed tenants keep their setting.
   const effectiveCostPerIter = costPerIter;
 
-  // ── Workloads for palette ───────────────────────────────────────────
-  const stats = useStats({ pollMs, includeCalibration });
+  // ── Workloads for palette (unfiltered: it's a jump list, not a view) ──
+  const stats = useStats({ pollMs, includeCalibration, unfiltered: true });
   const workloads =
     stats.state.status === "ok"
       ? stats.state.data.workloads
@@ -287,12 +299,9 @@ function AppInner() {
         bench={bench}
       />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        {bench && <BenchBanner onOpenInstall={() => setRoute("empty")} />}
+        {bench && <BenchBanner />}
         {demo && (
-          <DemoBanner
-            onOpenMethodology={() => setMethodologyOpen(true)}
-            onOpenInstall={() => setRoute("empty")}
-          />
+          <DemoBanner onOpenMethodology={() => setMethodologyOpen(true)} />
         )}
         <TopBar
           theme={theme}
@@ -398,15 +407,13 @@ function AppInner() {
 /** Demo banner — explicit "you're watching a replay of the recorded
  *  benchmark run" disclosure. The ⓘ link opens the methodology modal;
  *  the /benchmark link sends visitors to the same tenant's static
- *  full-run view; the "Install free" CTA routes to the inline EmptyState
- *  (install snippets for all 6 framework adapters) rather than the
- *  marketing site, so the visitor stays in the dashboard. */
+ *  full-run view; the sign-up CTA goes straight to /signup — one front
+ *  door for every get-a-token path (account → verify → token minted →
+ *  login auto-configures). */
 function DemoBanner({
   onOpenMethodology,
-  onOpenInstall,
 }: {
   onOpenMethodology: () => void;
-  onOpenInstall: () => void;
 }) {
   const [dismissed, setDismissed] = useState<boolean>(() => {
     try {
@@ -450,7 +457,8 @@ function DemoBanner({
           7 framework categories, fully measured). Runs land about once a
           second in their true recorded order; every number is a
           measurement — recorded telemetry, not live inference, nothing
-          scaled. The finished run is at{" "}
+          scaled. The demo includes every Team-tier feature (Waste
+          Report, alerts). The finished run is at{" "}
           <a
             href="/benchmark"
             style={{ color: "var(--accent)", textDecoration: "underline" }}
@@ -500,9 +508,8 @@ function DemoBanner({
         </span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>
-        <button
-          type="button"
-          onClick={onOpenInstall}
+        <a
+          href="/signup"
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -520,8 +527,8 @@ function DemoBanner({
             border: "none",
           }}
         >
-          Install free → instrument your own loops
-        </button>
+          Sign up free → instrument your own loops
+        </a>
         <button
           type="button"
           onClick={dismiss}
@@ -553,7 +560,7 @@ function DemoBanner({
  *  what the viewer is looking at + funnels to sign-up. Dismissible — the
  *  ✕ button persists to localStorage so a returning visitor isn't nagged.
  *  Sits above TopBar so it's the first thing on the page. */
-function BenchBanner({ onOpenInstall }: { onOpenInstall: () => void }) {
+function BenchBanner() {
   const [dismissed, setDismissed] = useState<boolean>(() => {
     try {
       return localStorage.getItem(BENCH_BANNER_DISMISSED_KEY) === "1";
@@ -605,9 +612,8 @@ function BenchBanner({ onOpenInstall }: { onOpenInstall: () => void }) {
         </span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>
-        <button
-          type="button"
-          onClick={onOpenInstall}
+        <a
+          href="/signup"
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -625,8 +631,8 @@ function BenchBanner({ onOpenInstall }: { onOpenInstall: () => void }) {
             border: "none",
           }}
         >
-          Install free → instrument your own loops
-        </button>
+          Sign up free → instrument your own loops
+        </a>
         <button
           type="button"
           onClick={dismiss}

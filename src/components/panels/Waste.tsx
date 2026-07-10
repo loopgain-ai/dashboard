@@ -12,6 +12,7 @@ import { AreaChart, HBar } from "../charts";
 import { Loaded } from "./PanelState";
 import { fmtUSD, fmtInt, fmtPct } from "../../lib/format";
 import { useAuth, useProvenance, useWindowSuffix } from "../../lib/api";
+import { TeamGateCard } from "../auth/UpgradeTeamModal";
 import { allocateByShare, scaleFactorToTotal, workloadClass } from "../../lib/stats";
 import { leadWithPct, spendEliminatedPct } from "../../lib/receipt";
 import { BENCH_OVERRUN, FIXED_CAP_BASELINE, iterationWasteFleet } from "../../lib/iteration-waste";
@@ -66,8 +67,24 @@ export function Waste({
   pollMs,
   sinceHours,
 }: Props) {
+  const { demo, bench } = useAuth();
   const stats = useStats({ pollMs, includeCalibration });
   const events = useEvents({ pollMs, sinceHours });
+  // The Waste Report is a Team-tier feature (landing #pricing). Individual
+  // tenants get the gate card; the demo and /benchmark deliberately show
+  // it in full (the demo banner says it includes every Team feature).
+  const isIndividualTier =
+    !demo &&
+    !bench &&
+    stats.state.status === "ok" &&
+    stats.state.data.tier === "individual";
+  if (isIndividualTier) {
+    return (
+      <div style={{ padding: 24 }}>
+        <TeamGateCard feature="waste" />
+      </div>
+    );
+  }
   return (
     <div style={{ padding: 24 }}>
       <Loaded state={stats.state}>
@@ -347,23 +364,42 @@ function WasteBody({
             {demo ? (
               // The replay's dollars are the recorded run's own measured
               // per-run costs — there is no cost assumption to edit.
-              <span
-                className="mono"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  background: "var(--surf-2)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 5,
-                  padding: "0 8px",
-                  height: 24,
-                  fontSize: 11,
-                  color: "var(--text-2)",
-                }}
-                title="Every dollar on this panel is the recorded benchmark run's own measured per-run cost — no $/iter assumption is involved."
-              >
-                measured per-run costs · recorded bench
-              </span>
+              <>
+                <span
+                  className="mono"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    borderRadius: 5,
+                    padding: "0 8px",
+                    height: 24,
+                    fontSize: 11,
+                    background: "color-mix(in oklab, var(--accent) 14%, transparent)",
+                    color: "var(--accent)",
+                    letterSpacing: "0.04em",
+                  }}
+                  title="On real tenants the Waste Report is a Team-tier feature — the demo shows every Team feature."
+                >
+                  TEAM FEATURE · INCLUDED IN DEMO
+                </span>
+                <span
+                  className="mono"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    background: "var(--surf-2)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 5,
+                    padding: "0 8px",
+                    height: 24,
+                    fontSize: 11,
+                    color: "var(--text-2)",
+                  }}
+                  title="Every dollar on this panel is the recorded benchmark run's own measured per-run cost — no $/iter assumption is involved."
+                >
+                  measured per-run costs · recorded bench
+                </span>
+              </>
             ) : (
               <label
                 style={{

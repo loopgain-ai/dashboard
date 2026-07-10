@@ -392,15 +392,14 @@ export function EmptyState({ openConnect }: Props) {
                 <>
                   Hosted:{" "}
                   <a
-                    href="https://loopgain.ai/#pricing"
-                    target="_blank"
-                    rel="noopener"
+                    href="/signup"
                     style={{ color: "var(--accent)", fontWeight: 600 }}
                   >
-                    get a free token
+                    sign up — free
                   </a>{" "}
-                  (Individual tier - email verification, token arrives in your
-                  inbox, no card).{" "}
+                  (Individual tier, no card — verify your email and your token
+                  is minted automatically; logging in configures this
+                  dashboard for you).{" "}
                 </>
               )}
               Self-hosted: provision via the{" "}
