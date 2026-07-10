@@ -106,9 +106,49 @@ export function TrajectoryChart({ pit, hover, height = 220 }: Props) {
             Aβ on top makes the headline LoopGain signal the dominant one. */}
         <path d={errPath} fill="none" stroke="var(--band-conv)" strokeWidth={1.5} strokeOpacity={0.7} />
 
+        {/* Point markers: a path needs ≥2 points to draw anything, so the
+            very common 1–2 iteration runs rendered as a BLANK chart. Dots
+            make every recorded iteration visible regardless of run length. */}
+        {errs.map((v, i) => (
+          <circle
+            key={`e${i}`}
+            cx={x(i)}
+            cy={yErr(v)}
+            r={n <= 3 ? 4 : 2.5}
+            fill="var(--band-conv)"
+            fillOpacity={0.9}
+          />
+        ))}
+        {ab.map((v, j) => (
+          <circle
+            key={`a${j}`}
+            cx={x(j + 1)}
+            cy={yAB(v)}
+            r={n <= 3 ? 4 : 2.5}
+            fill="var(--accent)"
+            fillOpacity={0.9}
+          />
+        ))}
+
         {/* Aβ line (right axis) */}
         {ab.length > 0 && (
           <path d={abPath} fill="none" stroke="var(--accent)" strokeWidth={1.75} />
+        )}
+
+        {/* One-iteration runs are the HAPPY path (65% of the bench converges
+            at iter 1) — say so instead of presenting a near-empty plot as if
+            something failed to render. */}
+        {n === 1 && (
+          <text
+            x={pad.left + plotW / 2}
+            y={yErr(safeErrs[0] ?? 1) - 14}
+            fill="var(--text-2)"
+            fontSize="11.5"
+            fontFamily="var(--mono)"
+            textAnchor="middle"
+          >
+            converged on the first pass — one iteration, no grind to draw
+          </text>
         )}
 
         {showCursor && (

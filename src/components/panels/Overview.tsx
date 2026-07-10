@@ -135,15 +135,24 @@ function OverviewBody({
   // mislabel the window there.
   const windowLabel = demo || bench ? "bench dataset · all-time" : timeRange;
   const windowSuffix = useWindowSuffix();
+  // Live replay (demo only): recorded benchmark runs revealing about twice
+  // a second. `session` carries the CUMULATIVE real deltas of every run
+  // replayed this visit — each increment below is that recorded run's own
+  // iterations/outcome/savings, i.e. exactly what a live dashboard would
+  // have added when that run's telemetry landed.
+  const replay = useDemoReplay();
+  const session = replay.session;
   // Outcome counts come straight from /v1/stats.outcomes — tenant-wide,
   // not sample-biased. Outcomes are the terminal state recorded by the
-  // library; the receiver SUMs them on every event in window.
+  // library; the receiver SUMs them on every event in window. Replayed
+  // recorded runs accrue on top in demo.
   const outcomeCounts = useMemo<Record<string, number>>(() => {
     const c: Record<string, number> = {};
     for (const row of stats.outcomes) c[row.outcome] = row.count;
+    for (const [k, v] of Object.entries(session.outcomes)) c[k] = (c[k] ?? 0) + v;
     return c;
-  }, [stats.outcomes]);
-  const totalEvents = stats.totals?.event_count ?? events.length;
+  }, [stats.outcomes, session.outcomes]);
+  const totalEvents = (stats.totals?.event_count ?? events.length) + session.runs;
   // % CONVERGED — single-scalar fleet-health signal feeding the RingGauge
   // on the left card. Sourced from /v1/stats.outcomes server-side counts
   // (not the recency-biased /events sample), so the gauge reflects
@@ -168,12 +177,31 @@ function OverviewBody({
   const attentionCount =
     (outcomeCounts["oscillating"] ?? 0) + (outcomeCounts["diverged"] ?? 0);
   const hasDiverged = (outcomeCounts["diverged"] ?? 0) > 0;
-  const totals = stats.totals ?? {
+  const baseTotals = stats.totals ?? {
     event_count: 0,
     total_iterations: 0,
     total_savings: 0,
     rollbacks: 0,
   };
+  // Accrue the replayed runs' real deltas so every counter on the panel
+  // moves as recorded runs come in (demo). Dollars accrue at the demo's
+  // $/iter on the run's real avoided iterations.
+  const totals = useMemo(() => {
+    if (session.runs === 0) return baseTotals;
+    return {
+      ...baseTotals,
+      event_count: baseTotals.event_count + session.runs,
+      total_iterations: baseTotals.total_iterations + session.iterations,
+      total_savings: baseTotals.total_savings + session.savedIterations,
+      rollbacks: baseTotals.rollbacks + session.rollbacks,
+      total_actual_dollars_saved:
+        typeof baseTotals.total_actual_dollars_saved === "number"
+          ? baseTotals.total_actual_dollars_saved +
+            session.savedIterations * costPerIter
+          : baseTotals.total_actual_dollars_saved,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stats.totals, session, costPerIter]);
   // Prefer the receiver's SUM(actual_dollars_saved) when present — that's
   // the tenant's real, measured paired-baseline delta (bench has this from
   // running every workload under B20 and LG). For tenants without paired
@@ -260,13 +288,6 @@ function OverviewBody({
     };
   }, [events]);
 
-  // Live replay (demo only): recorded benchmark runs revealed one every
-  // few seconds this session. They feed the Recent-runs feed, tick the
-  // pulse's current bucket, and drive the animated trajectory. The big
-  // scaled heroes deliberately do NOT tick — those dollars are a
-  // projection, and accruing them in real time would imply measurement.
-  const replay = useDemoReplay();
-
   // Recent transitions: 8 most recent events with their classified band.
   // Replayed recorded runs (demo) prepend, newest first.
   const transitions = useMemo(() => {
@@ -306,13 +327,13 @@ function OverviewBody({
   // Pulse buckets, with the current bucket ticking up as recorded runs
   // replay (raw-count regime — replayed runs are real recorded events).
   const pulseBuckets = useMemo(() => {
-    if (replay.revealed.length === 0 || fleetPulse.mode !== "rolling-24h") {
+    if (session.runs === 0 || fleetPulse.mode !== "rolling-24h") {
       return fleetPulse.buckets;
     }
     const b = [...fleetPulse.buckets];
-    b[b.length - 1] = (b[b.length - 1] ?? 0) + replay.revealed.length;
+    b[b.length - 1] = (b[b.length - 1] ?? 0) + session.runs;
     return b;
-  }, [fleetPulse, replay.revealed.length]);
+  }, [fleetPulse, session.runs]);
 
   return (
     <>
@@ -688,8 +709,8 @@ function OverviewBody({
             </div>
             <span className="mono" style={{ fontSize: 10.5, color: "var(--text-3)" }}>
               {replay.enabled
-                ? `${replay.revealed.length} recorded ${
-                    replay.revealed.length === 1 ? "run" : "runs"
+                ? `${session.runs} recorded ${
+                    session.runs === 1 ? "run" : "runs"
                   } replayed this session`
                 : `${transitions.length} events`}
             </span>
@@ -911,7 +932,9 @@ function ReplayTrajectory({ replay }: { replay: ReplayEvent }) {
         }
         return v + 1;
       });
-    }, 300);
+      // 120ms/iteration: even a 5-iteration run finishes its draw before
+      // the next recorded run replaces it at the ~0.5s reveal cadence.
+    }, 120);
     return () => window.clearInterval(id);
   }, [replay, pit, n]);
 

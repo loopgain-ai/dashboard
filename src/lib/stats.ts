@@ -139,3 +139,13 @@ export function allocateByShare(
     .map((r) => ({ label: r.label, value: (r.weight / total) * heroTotal }))
     .sort((a, b) => b.value - a.value);
 }
+
+/** Collapse a bench-style per-run workload_id ("w2-debate-autogen-gpt-4-1-
+ *  mini-seed49") to its workload CLASS ("w2-debate-autogen-gpt-4-1-mini").
+ *  A class is a real benchmark cell of ~200 recorded runs — the honest
+ *  granularity for scaled/aggregated displays, where a single seed run
+ *  must never be presented as carrying fleet-scale dollars. IDs without a
+ *  seed suffix pass through unchanged. */
+export function workloadClass(workloadId: string): string {
+  return workloadId.replace(/-seed\d+$/, "");
+}

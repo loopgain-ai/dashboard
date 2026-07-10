@@ -12,7 +12,7 @@ import { AreaChart, HBar } from "../charts";
 import { Loaded } from "./PanelState";
 import { fmtUSD, fmtInt, fmtPct } from "../../lib/format";
 import { useAuth, useProvenance, useWindowSuffix } from "../../lib/api";
-import { allocateByShare, scaleFactorToTotal } from "../../lib/stats";
+import { allocateByShare, scaleFactorToTotal, workloadClass } from "../../lib/stats";
 import { BENCH_OVERRUN, FIXED_CAP_BASELINE, iterationWasteFleet } from "../../lib/iteration-waste";
 import type { LoopEvent, StatsResponse } from "../../types";
 
@@ -181,24 +181,29 @@ function WasteBody({
       ? saved / totals.total_savings
       : costPerIter;
 
-  // Breakdown by workload_id. The events sample provides the SHAPE
-  // (each workload's share of avoided iterations); the hero `saved`
-  // provides the TOTAL. Allocating the hero across sample shares keeps
-  // this card in the same scaling regime as the number above it —
-  // previously the raw sample dollars sat next to a scaled/measured hero
-  // (in demo: "$3" bars under an $828.2k headline).
+  // Breakdown by workload. The events sample provides the SHAPE (each
+  // workload's share of avoided iterations); the hero `saved` provides
+  // the TOTAL. Allocating the hero across sample shares keeps this card
+  // in the same scaling regime as the number above it.
+  //
+  // In DEMO the rows are grouped to workload CLASS (w2-debate-autogen-…,
+  // ~200 recorded runs per class): a class genuinely represents a slice
+  // of the projected fleet, so a thousands-of-dollars bar is honest. A
+  // single seed run must never wear fleet-scale dollars — allocating
+  // $828.2k across per-seed rows printed "$6.8k" on ONE recorded run.
   const byWorkload = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of events) {
       if (e.workload_id && e.savings_vs_fixed_cap != null && e.savings_vs_fixed_cap > 0) {
-        m.set(e.workload_id, (m.get(e.workload_id) ?? 0) + e.savings_vs_fixed_cap);
+        const label = demo ? workloadClass(e.workload_id) : e.workload_id;
+        m.set(label, (m.get(label) ?? 0) + e.savings_vs_fixed_cap);
       }
     }
     return allocateByShare(
       Array.from(m).map(([label, weight]) => ({ label, weight })),
       saved,
     );
-  }, [events, saved]);
+  }, [events, saved, demo]);
 
   // By outcome — prefer the receiver's fleet-wide aggregate
   // (v0.3.1+) which carries real `actual_dollars_saved` per
@@ -667,11 +672,11 @@ function WasteBody({
             // The total is the hero (measured/projected/extrapolated per
             // savedProv); the split is the events sample's shares.
             tag: demo
-              ? `projected · shares from ${events.length}-run sample`
+              ? `projected · ${byWorkload.length} workload classes`
               : `${savedProv.mode} total · sample shares`,
             measuredTint: savedProv.mode === "measured",
             tagTitle: demo
-              ? "The hero total is a projection (measured bench × your scale + $/iter); each workload's slice of it comes from that workload's share of avoided iterations in the events sample."
+              ? "Each row is a benchmark workload CLASS (~200 recorded runs), representing that class's slice of the projected fleet. The hero total is a projection (measured bench × your scale + $/iter); each class's slice comes from its share of avoided iterations."
               : "The total matches the hero above; each workload's slice comes from its share of avoided iterations in the events sample. Not a per-workload measurement.",
           },
           {
