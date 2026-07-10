@@ -255,6 +255,22 @@ export function SignupPage() {
           Click it to activate your account — your free dashboard token is minted
           the moment you verify, and setup instructions arrive in the same inbox.
         </p>
+        <p
+          style={{
+            margin: "14px 0 0",
+            padding: "10px 12px",
+            borderRadius: 6,
+            background: "color-mix(in oklab, var(--accent) 8%, transparent)",
+            border: "1px solid color-mix(in oklab, var(--accent) 25%, transparent)",
+            fontSize: 12.5,
+            lineHeight: 1.6,
+            color: "var(--text-2)",
+          }}
+        >
+          Not there after a minute? <strong>Check your junk/spam folder</strong> —
+          first emails from a new sender often land there. Marking it "not junk"
+          keeps the setup email out of it too.
+        </p>
         <p style={{ margin: "14px 0 0", fontSize: 12, color: "var(--text-3)" }}>
           Already verified? <a href="/login" style={{ color: "var(--accent)" }}>Log in</a>.
         </p>
@@ -415,7 +431,8 @@ function LoginForm() {
       >
         {forgotSent ? (
           <p style={{ margin: 0, fontSize: 13, lineHeight: 1.7, color: "var(--text-2)" }}>
-            If that address has an account, a reset link is on its way. Check your inbox.
+            If that address has an account, a reset link is on its way. Check your
+            inbox — and your junk/spam folder if it isn&apos;t there in a minute.
           </p>
         ) : (
           <form onSubmit={requestReset}>
