@@ -7,7 +7,7 @@
 import { useMemo, useState } from "react";
 import { useEvents, useStats } from "../../lib/data-hooks";
 import { BANDS, BAND_COLOR, bandFromEvent } from "../../lib/bands";
-import { Chip, PanelHeader, Tooltip } from "../primitives";
+import { Chip, PanelHeader, Tooltip, WorkloadFilter } from "../primitives";
 import { fmtAbsTs, fmtInt, truncate } from "../../lib/format";
 import { Loaded } from "./PanelState";
 import { loopRouteId, type RouteId } from "../shell";
@@ -152,31 +152,11 @@ function HealthMapBody({
         </div>
       )}
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
-        <span className="label" style={{ alignSelf: "center", marginRight: 6 }}>
-          Workload
-        </span>
-        <Chip
-          on={workloadFilter === null}
-          onClick={() => setWorkloadFilter(null)}
-        >
-          all
-        </Chip>
-        {workloads
-          .filter((w): w is { workload_id: string; count: number } => Boolean(w.workload_id))
-          .slice(0, 14)
-          .map((w) => (
-            <Chip
-              key={w.workload_id}
-              on={workloadFilter === w.workload_id}
-              onClick={() =>
-                setWorkloadFilter(workloadFilter === w.workload_id ? null : w.workload_id)
-              }
-            >
-              {w.workload_id} ({w.count})
-            </Chip>
-          ))}
-      </div>
+      <WorkloadFilter
+        workloads={workloads}
+        selected={workloadFilter}
+        onSelect={setWorkloadFilter}
+      />
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
         <span className="label" style={{ alignSelf: "center", marginRight: 6 }}>
           Band

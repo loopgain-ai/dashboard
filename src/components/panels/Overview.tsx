@@ -15,6 +15,7 @@ import { Loaded } from "./PanelState";
 import { loopRouteId } from "../shell/routes";
 import type { RouteId, TimeRange } from "../shell";
 import { useAuth, useProvenance, useWindowSuffix, type LoadState } from "../../lib/api";
+import { leadWithPct, spendEliminatedPct } from "../../lib/receipt";
 import { useDemoReplay, type ReplayEvent } from "../../lib/demo-replay";
 import type { EventDetailResponse, LoopEvent, Outcome, StatsResponse } from "../../types";
 
@@ -216,6 +217,18 @@ function OverviewBody({
     : totals.total_savings * costPerIter;
   // Demo mode = projection; the measured badge must not imply otherwise.
   const savedProv = useProvenance(hasActualSavings, costPerIter);
+  // Small measured fleets lead with the eliminated-% (see lib/receipt.ts;
+  // pinned by dash.small_fleet_pct). Needs measured spend for the ratio.
+  const hasActualSpendOv =
+    typeof totals.total_actual_dollars_spent === "number" &&
+    Number.isFinite(totals.total_actual_dollars_spent);
+  const pctFirstOv =
+    savedProv.mode === "measured" && hasActualSpendOv
+      ? leadWithPct(true, savedDollars)
+      : false;
+  const eliminatedPctOv = pctFirstOv
+    ? spendEliminatedPct(savedDollars, totals.total_actual_dollars_spent as number)
+    : null;
 
   // Fleet pulse: bucket events by time. Two modes.
   //   rolling-24h (default): the panel's original behavior — 24 hourly
@@ -474,9 +487,20 @@ function OverviewBody({
                 lineHeight: 1,
               }}
             >
-              {fmtUSD(savedDollars, { cents: hasActualSavings })}
+              {pctFirstOv && eliminatedPctOv != null
+                ? fmtPct(eliminatedPctOv)
+                : fmtUSD(savedDollars, { cents: hasActualSavings })}
             </div>
             <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-2)" }}>
+              {pctFirstOv && eliminatedPctOv != null && (
+                <>
+                  of loop spend eliminated ·{" "}
+                  <span className="mono" style={{ color: "var(--text-1)" }}>
+                    {fmtUSD(savedDollars, { cents: true })}
+                  </span>{" "}
+                  measured ·{" "}
+                </>
+              )}
               {fmtCompact(totals.total_savings)} iterations saved ·{" "}
               {fmtCompact(totals.rollbacks)} rollbacks executed
             </div>

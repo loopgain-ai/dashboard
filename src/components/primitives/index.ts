@@ -5,3 +5,4 @@ export { NoCase } from "./NoCase";
 export { PanelHeader } from "./PanelHeader";
 export { StatePill } from "./StatePill";
 export { Tooltip } from "./Tooltip";
+export { WorkloadFilter } from "./WorkloadFilter";

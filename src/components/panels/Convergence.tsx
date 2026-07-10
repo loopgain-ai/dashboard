@@ -10,7 +10,7 @@
 import { useMemo, useState } from "react";
 import { useEvents, useProfiles, useStats } from "../../lib/data-hooks";
 import { useWindowSuffix } from "../../lib/api";
-import { PanelHeader, Chip, StatePill } from "../primitives";
+import { PanelHeader, Chip, StatePill, WorkloadFilter } from "../primitives";
 import { ConvergenceOverTime, HBar } from "../charts";
 import { Loaded } from "./PanelState";
 import { median } from "../../lib/stats";
@@ -91,36 +91,12 @@ export function Convergence({ pollMs, sinceHours }: Props) {
               }
             />
 
-            {/* Workload filter chips */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
-              <span className="label" style={{ alignSelf: "center", marginRight: 6 }}>
-                Workload
-              </span>
-              <Chip
-                on={workloadFilter === null}
-                onClick={() => setWorkloadFilter(null)}
-              >
-                all
-              </Chip>
-              {statsData.workloads
-                .filter(
-                  (w): w is { workload_id: string; count: number } => Boolean(w.workload_id),
-                )
-                .slice(0, 14)
-                .map((w) => (
-                  <Chip
-                    key={w.workload_id}
-                    on={workloadFilter === w.workload_id}
-                    onClick={() =>
-                      setWorkloadFilter(
-                        workloadFilter === w.workload_id ? null : w.workload_id,
-                      )
-                    }
-                  >
-                    {w.workload_id} ({w.count})
-                  </Chip>
-                ))}
-            </div>
+            {/* Workload filter (search-backed past a dozen workloads) */}
+            <WorkloadFilter
+              workloads={statsData.workloads}
+              selected={workloadFilter}
+              onSelect={setWorkloadFilter}
+            />
 
             <Loaded state={profiles.state}>
               {(profilesData) => (

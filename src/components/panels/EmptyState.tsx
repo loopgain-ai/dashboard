@@ -6,6 +6,8 @@
 
 import { useState } from "react";
 import { Chip, Icon, PanelHeader } from "../primitives";
+import { useAuth } from "../../lib/api";
+import { useStats } from "../../lib/data-hooks";
 
 interface Props {
   openConnect: () => void;
@@ -146,8 +148,32 @@ const LANG_ORDER: Lang[] = [
 export function EmptyState({ openConnect }: Props) {
   const [lang, setLang] = useState<Lang>("python");
   const [copied, setCopied] = useState(false);
+  const { config, demo, bench } = useAuth();
 
-  const snippet = SNIPPETS[lang];
+  // Connected tenants get THEIR endpoint + token interpolated into the
+  // snippet - copy-paste needs zero editing. Public visitors keep the
+  // placeholders.
+  const base = SNIPPETS[lang];
+  const snippet = config
+    ? {
+        ...base,
+        code: base.code
+          .replaceAll(
+            "https://telemetry.loopgain.ai/v1/aggregate",
+            `${config.endpoint.replace(/\/$/, "")}/v1/aggregate`,
+          )
+          .replaceAll('"lgk_..."', `"${config.token}"`),
+      }
+    : base;
+
+  // First-event detection: while a connected tenant has zero events, the
+  // stats poll (10s, visibility-gated) watches for the first one to land
+  // and flips this surface into a success state - setup verifies itself.
+  const stats = useStats({ pollMs: config ? 10_000 : undefined });
+  const eventCount =
+    !demo && !bench && config && stats.state.status === "ok"
+      ? stats.state.data.totals?.event_count ?? 0
+      : null;
 
   function copy(): void {
     navigator.clipboard?.writeText(snippet.code).then(() => {
@@ -179,6 +205,63 @@ export function EmptyState({ openConnect }: Props) {
           </div>
         }
       />
+
+      {eventCount !== null && (
+        <div
+          className="card"
+          style={{
+            padding: "14px 18px",
+            marginBottom: 16,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            border:
+              eventCount > 0
+                ? "1px solid color-mix(in oklab, var(--band-conv) 40%, transparent)"
+                : "1px solid color-mix(in oklab, var(--band-stall) 30%, transparent)",
+          }}
+        >
+          {eventCount > 0 ? (
+            <>
+              <span
+                className="mono"
+                style={{ color: "var(--band-conv)", fontSize: 16 }}
+              >
+                ✓
+              </span>
+              <div style={{ flex: 1, fontSize: 12.5, color: "var(--text-1)" }}>
+                <span className="mono" style={{ color: "var(--band-conv)" }}>
+                  {eventCount.toLocaleString()} event{eventCount === 1 ? "" : "s"} received
+                </span>{" "}
+                — your telemetry is flowing and the dashboard is live.
+              </div>
+              <Chip onClick={() => window.location.assign("/")}>
+                Open your dashboard <Icon.Chevron />
+              </Chip>
+            </>
+          ) : (
+            <>
+              <span
+                className="pulse-dot"
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  background: "var(--band-stall)",
+                  flex: "0 0 auto",
+                }}
+              />
+              <div style={{ flex: 1, fontSize: 12.5, color: "var(--text-2)" }}>
+                <span className="mono" style={{ color: "var(--band-stall)" }}>
+                  waiting for your first event…
+                </span>{" "}
+                — run the snippet below; this flips the moment your first
+                loop&apos;s telemetry lands (checks every 10s).
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="card" style={{ padding: 24 }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 18 }}>
@@ -300,15 +383,27 @@ export function EmptyState({ openConnect }: Props) {
               2 — Get a telemetry token
             </div>
             <div style={{ color: "var(--text-2)" }}>
-              Hosted: email{" "}
-              <a
-                href="mailto:hello@loopgain.ai"
-                style={{ color: "var(--accent)" }}
-              >
-                hello@loopgain.ai
-              </a>{" "}
-              while the public signup flow ships. Self-hosted: provision via
-              the{" "}
+              {config ? (
+                <>
+                  You&apos;re connected - your token and endpoint are already
+                  filled into the snippet above.{" "}
+                </>
+              ) : (
+                <>
+                  Hosted:{" "}
+                  <a
+                    href="https://loopgain.ai/#pricing"
+                    target="_blank"
+                    rel="noopener"
+                    style={{ color: "var(--accent)", fontWeight: 600 }}
+                  >
+                    get a free token
+                  </a>{" "}
+                  (Individual tier - email verification, token arrives in your
+                  inbox, no card).{" "}
+                </>
+              )}
+              Self-hosted: provision via the{" "}
               <a
                 href="https://github.com/loopgain-ai/telemetry-receiver"
                 target="_blank"
@@ -334,7 +429,19 @@ export function EmptyState({ openConnect }: Props) {
                 lg.send_telemetry()
               </span>{" "}
               after each loop terminates (or use the adapter's auto-stamped
-              path).
+              path). With{" "}
+              <span className="mono" style={{ color: "var(--text-1)" }}>
+                LOOPGAIN_TELEMETRY_ENDPOINT
+              </span>
+              /
+              <span className="mono" style={{ color: "var(--text-1)" }}>
+                _TOKEN
+              </span>{" "}
+              exported it needs no arguments — and{" "}
+              <span className="mono" style={{ color: "var(--text-1)" }}>
+                loopgain doctor
+              </span>{" "}
+              sends a $0 test event to prove the pipeline first.
             </div>
           </div>
         </div>

@@ -13,6 +13,7 @@ import { Loaded } from "./PanelState";
 import { fmtUSD, fmtInt, fmtPct } from "../../lib/format";
 import { useAuth, useProvenance, useWindowSuffix } from "../../lib/api";
 import { allocateByShare, scaleFactorToTotal, workloadClass } from "../../lib/stats";
+import { leadWithPct, spendEliminatedPct } from "../../lib/receipt";
 import { BENCH_OVERRUN, FIXED_CAP_BASELINE, iterationWasteFleet } from "../../lib/iteration-waste";
 import type { LoopEvent, StatsResponse } from "../../types";
 
@@ -156,6 +157,15 @@ function WasteBody({
   // the measured badge must not render there — see useProvenance.
   const savedProv = useProvenance(hasActualSavings, costPerIter);
   const spendProv = useProvenance(hasActualSpend, costPerIter);
+
+  // Small measured fleets lead with the eliminated-% — "$25.11" undersells
+  // a 92.8% cost cut. Only when BOTH sides of the ratio are measured
+  // (never on projections/extrapolations); pinned by dash.small_fleet_pct.
+  const pctFirst =
+    savedProv.mode === "measured" && spendProv.mode === "measured"
+      ? leadWithPct(true, saved)
+      : false;
+  const eliminatedPct = pctFirst ? spendEliminatedPct(saved, actualSpend) : null;
 
   // Iterations-past-best section. Fleet aggregates come from the receiver's
   // served best_index columns (proven == raw by loopgain-verify
@@ -395,8 +405,19 @@ function WasteBody({
               marginTop: 8,
             }}
           >
-            {fmtUSD(saved, { cents: hasActualSavings })}
+            {pctFirst && eliminatedPct != null
+              ? fmtPct(eliminatedPct)
+              : fmtUSD(saved, { cents: hasActualSavings })}
           </div>
+          {pctFirst && eliminatedPct != null && (
+            <div style={{ marginTop: 8, fontSize: 13, color: "var(--text-2)" }}>
+              of loop spend eliminated ·{" "}
+              <span className="mono" style={{ color: "var(--text-1)" }}>
+                {fmtUSD(saved, { cents: true })}
+              </span>{" "}
+              measured savings on this fleet so far
+            </div>
+          )}
           <div
             style={{
               marginTop: 14,
