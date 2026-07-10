@@ -11,7 +11,8 @@ import { Chip, Icon, PanelHeader } from "../primitives";
 import { AreaChart, HBar } from "../charts";
 import { Loaded } from "./PanelState";
 import { fmtUSD, fmtInt, fmtPct } from "../../lib/format";
-import { useWindowSuffix } from "../../lib/api";
+import { useAuth, useProvenance, useWindowSuffix } from "../../lib/api";
+import { allocateByShare, scaleFactorToTotal } from "../../lib/stats";
 import { BENCH_OVERRUN, FIXED_CAP_BASELINE, iterationWasteFleet } from "../../lib/iteration-waste";
 import type { LoopEvent, StatsResponse } from "../../types";
 
@@ -21,6 +22,40 @@ const OUTCOME_COLOR: Record<string, string> = {
   oscillating: "var(--band-osc)",
   max_iterations: "var(--band-stall)",
 };
+
+/** Provenance chip for a dollar figure: green = measured, amber =
+ *  projected (demo), grey = extrapolated. One component so every badge
+ *  on the panel stays consistent with the useProvenance truth table. */
+function ProvBadge({ prov }: { prov: import("../../lib/api").Provenance }) {
+  const bg =
+    prov.mode === "measured"
+      ? "color-mix(in oklab, var(--band-fast) 18%, transparent)"
+      : prov.mode === "projected"
+        ? "color-mix(in oklab, var(--band-stall) 16%, transparent)"
+        : "var(--surf-3)";
+  const color =
+    prov.mode === "measured"
+      ? "var(--band-fast)"
+      : prov.mode === "projected"
+        ? "var(--band-stall)"
+        : "var(--text-3)";
+  return (
+    <span
+      className="mono"
+      style={{
+        marginLeft: 10,
+        fontSize: 9.5,
+        padding: "2px 6px",
+        borderRadius: 3,
+        background: bg,
+        color,
+        letterSpacing: "0.04em",
+      }}
+    >
+      {prov.badge}
+    </span>
+  );
+}
 
 interface Props {
   costPerIter: number;
@@ -71,6 +106,7 @@ function WasteBody({
   setCostPerIter: (n: number) => void;
 }) {
   const windowSuffix = useWindowSuffix();
+  const { demo } = useAuth();
   const totals = stats.totals ?? {
     event_count: 0,
     total_iterations: 0,
@@ -115,6 +151,12 @@ function WasteBody({
     ? saved + actualSpend
     : (totals.total_iterations + totals.total_savings) * costPerIter;
 
+  // Provenance for the three hero dollars. In demo mode every one of them
+  // is a projection (measured bench × the visitor's scale + $/iter), so
+  // the measured badge must not render there — see useProvenance.
+  const savedProv = useProvenance(hasActualSavings, costPerIter);
+  const spendProv = useProvenance(hasActualSpend, costPerIter);
+
   // Iterations-past-best section. Fleet aggregates come from the receiver's
   // served best_index columns (proven == raw by loopgain-verify
   // `dash.live_iteration_waste`); display math is the shared pure module.
@@ -139,19 +181,24 @@ function WasteBody({
       ? saved / totals.total_savings
       : costPerIter;
 
-  // Breakdown by workload_id from events
+  // Breakdown by workload_id. The events sample provides the SHAPE
+  // (each workload's share of avoided iterations); the hero `saved`
+  // provides the TOTAL. Allocating the hero across sample shares keeps
+  // this card in the same scaling regime as the number above it —
+  // previously the raw sample dollars sat next to a scaled/measured hero
+  // (in demo: "$3" bars under an $828.2k headline).
   const byWorkload = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of events) {
       if (e.workload_id && e.savings_vs_fixed_cap != null && e.savings_vs_fixed_cap > 0) {
-        const dollars = e.savings_vs_fixed_cap * costPerIter;
-        m.set(e.workload_id, (m.get(e.workload_id) ?? 0) + dollars);
+        m.set(e.workload_id, (m.get(e.workload_id) ?? 0) + e.savings_vs_fixed_cap);
       }
     }
-    return Array.from(m)
-      .map(([label, value]) => ({ label, value }))
-      .sort((a, b) => b.value - a.value);
-  }, [events, costPerIter]);
+    return allocateByShare(
+      Array.from(m).map(([label, weight]) => ({ label, weight })),
+      saved,
+    );
+  }, [events, saved]);
 
   // By outcome — prefer the receiver's fleet-wide aggregate
   // (v0.3.1+) which carries real `actual_dollars_saved` per
@@ -203,24 +250,23 @@ function WasteBody({
   // saved values integrate to the headline $25.81 while preserving
   // when the events actually happened. Non-paired tenants fall back to
   // the pure extrapolation since they have no measured anchor.
+  // Daily time series — bucket events into days. The sample provides
+  // WHEN things happened; the hero numbers provide HOW MUCH. Each
+  // layer is normalized so it integrates to its hero (saved layer →
+  // `saved`, spend layer → `actualSpend`) — the previous totals-ratio
+  // scaling diverged from the sample by the fleet/sample factor in
+  // demo mode (raw ~$27/day axis under an $828.2k hero). Pinned by
+  // loopgain-verify dash.demo_scaling_coherence via scaleFactorToTotal.
   const series = useMemo(() => {
     if (events.length === 0) return [];
-    const extrapolatedSavedTotal = totals.total_savings * costPerIter;
-    const savedScale =
-      hasActualSavings && extrapolatedSavedTotal > 0
-        ? saved / extrapolatedSavedTotal
-        : 1;
-    // Same scaling trick for the spend layer when the receiver carries
-    // measured spend (v0.3.2+). Per-event spend is still extrapolated
-    // from iter-count because actual_dollars_spent isn't joined onto
-    // /v1/events yet; we scale it so the daily layer integrates to the
-    // measured headline. Falls back to no-op when only extrapolated
-    // spend is available.
-    const extrapolatedSpentTotal = totals.total_iterations * costPerIter;
-    const spentScale =
-      hasActualSpend && extrapolatedSpentTotal > 0
-        ? actualSpend / extrapolatedSpentTotal
-        : 1;
+    let sampleSavedIters = 0;
+    let sampleSpentIters = 0;
+    for (const e of events) {
+      sampleSavedIters += e.savings_vs_fixed_cap ?? 0;
+      sampleSpentIters += e.iterations_used;
+    }
+    const savedScale = scaleFactorToTotal(sampleSavedIters, saved);
+    const spentScale = scaleFactorToTotal(sampleSpentIters, actualSpend);
     const m = new Map<number, { saved: number; spent: number }>();
     const dayOf = (ts: number) => Math.floor(ts / 86400) * 86400;
     let minDay = Infinity;
@@ -229,8 +275,8 @@ function WasteBody({
       const day = dayOf(e.timestamp_hour);
       if (day < minDay) minDay = day;
       if (day > maxDay) maxDay = day;
-      const eventSaved = (e.savings_vs_fixed_cap ?? 0) * costPerIter * savedScale;
-      const eventSpent = e.iterations_used * costPerIter * spentScale;
+      const eventSaved = (e.savings_vs_fixed_cap ?? 0) * savedScale;
+      const eventSpent = e.iterations_used * spentScale;
       const slot = m.get(day);
       if (slot) {
         slot.saved += eventSaved;
@@ -250,16 +296,7 @@ function WasteBody({
       });
     }
     return out;
-  }, [
-    events,
-    costPerIter,
-    hasActualSavings,
-    saved,
-    totals.total_savings,
-    totals.total_iterations,
-    hasActualSpend,
-    actualSpend,
-  ]);
+  }, [events, saved, actualSpend]);
 
   function fmtTick(i: number, n: number): string {
     const p = series[i];
@@ -276,38 +313,61 @@ function WasteBody({
         title="Waste Report"
         right={
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <label
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                background: "var(--surf-2)",
-                border: "1px solid var(--border)",
-                borderRadius: 5,
-                padding: "0 8px",
-                height: 24,
-              }}
-            >
-              <span className="label">cost/iter $</span>
-              <input
-                type="number"
-                value={costPerIter}
-                step="0.01"
-                min="0"
-                onChange={(e) => setCostPerIter(Number(e.target.value) || 0)}
+            {demo ? (
+              // Demo mode has exactly ONE cost assumption — the Demo
+              // Controls' $/iter. An editable field here created a second,
+              // competing $/iter on the same screen.
+              <span
+                className="mono"
                 style={{
-                  width: 60,
-                  height: 22,
-                  background: "transparent",
-                  border: "none",
-                  outline: "none",
-                  fontSize: 11.5,
-                  fontFamily: "var(--mono)",
-                  color: "var(--text-1)",
-                  textAlign: "right",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  background: "var(--surf-2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 5,
+                  padding: "0 8px",
+                  height: 24,
+                  fontSize: 11,
+                  color: "var(--text-2)",
                 }}
-              />
-            </label>
+                title="In demo mode the cost-per-iteration comes from the Demo Controls at the top of the page."
+              >
+                ${costPerIter.toFixed(4)}/iter · set in Demo Controls
+              </span>
+            ) : (
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  background: "var(--surf-2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 5,
+                  padding: "0 8px",
+                  height: 24,
+                }}
+              >
+                <span className="label">cost/iter $</span>
+                <input
+                  type="number"
+                  value={costPerIter}
+                  step="0.01"
+                  min="0"
+                  onChange={(e) => setCostPerIter(Number(e.target.value) || 0)}
+                  style={{
+                    width: 60,
+                    height: 22,
+                    background: "transparent",
+                    border: "none",
+                    outline: "none",
+                    fontSize: 11.5,
+                    fontFamily: "var(--mono)",
+                    color: "var(--text-1)",
+                    textAlign: "right",
+                  }}
+                />
+              </label>
+            )}
             <Chip icon={<Icon.Download />}>Export</Chip>
           </div>
         }
@@ -317,22 +377,7 @@ function WasteBody({
         <div>
           <div className="label">
             Saved by LoopGain · {windowSuffix}
-            {hasActualSavings && (
-              <span
-                className="mono"
-                style={{
-                  marginLeft: 10,
-                  fontSize: 9.5,
-                  padding: "2px 6px",
-                  borderRadius: 3,
-                  background: "color-mix(in oklab, var(--band-fast) 18%, transparent)",
-                  color: "var(--band-fast)",
-                  letterSpacing: "0.04em",
-                }}
-              >
-                MEASURED · PAIRED BASELINE
-              </span>
-            )}
+            <ProvBadge prov={savedProv} />
           </div>
           <div
             className="mono"
@@ -375,7 +420,7 @@ function WasteBody({
               {fmtInt(totals.rollbacks)} rollbacks executed in window
             </span>
           </div>
-          {hasActualSavings && (
+          {savedProv.showNotExtrapolation && (
             <div
               style={{
                 marginTop: 10,
@@ -387,6 +432,22 @@ function WasteBody({
             >
               Real cost delta vs. matched no-LoopGain runs of the same workload.
               Cents-precision; not an extrapolation.
+            </div>
+          )}
+          {savedProv.mode === "projected" && (
+            <div
+              style={{
+                marginTop: 10,
+                fontSize: 11,
+                color: "var(--text-3)",
+                maxWidth: 460,
+                lineHeight: 1.45,
+              }}
+            >
+              Projected from the measured 2,000-run benchmark at your fleet
+              scale and $/iter assumptions (Demo Controls above). The
+              underlying per-run measurements are real; this total is a
+              projection, not a measurement.
             </div>
           )}
         </div>
@@ -405,24 +466,7 @@ function WasteBody({
           <div>
             <div className="label">
               Would have spent
-              <span
-                className="mono"
-                style={{
-                  marginLeft: 10,
-                  fontSize: 9.5,
-                  padding: "2px 6px",
-                  borderRadius: 3,
-                  background: hasActualSavings
-                    ? "color-mix(in oklab, var(--band-fast) 18%, transparent)"
-                    : "var(--surf-3)",
-                  color: hasActualSavings ? "var(--band-fast)" : "var(--text-3)",
-                  letterSpacing: "0.04em",
-                }}
-              >
-                {hasActualSavings
-                  ? "MEASURED · PAIRED BASELINE"
-                  : `EXTRAPOLATED · $${costPerIter.toFixed(2)}/ITER`}
-              </span>
+              <ProvBadge prov={savedProv} />
             </div>
             <div
               className="mono"
@@ -442,24 +486,7 @@ function WasteBody({
           <div>
             <div className="label">
               Actual spend
-              <span
-                className="mono"
-                style={{
-                  marginLeft: 10,
-                  fontSize: 9.5,
-                  padding: "2px 6px",
-                  borderRadius: 3,
-                  background: hasActualSpend
-                    ? "color-mix(in oklab, var(--band-fast) 18%, transparent)"
-                    : "var(--surf-3)",
-                  color: hasActualSpend ? "var(--band-fast)" : "var(--text-3)",
-                  letterSpacing: "0.04em",
-                }}
-              >
-                {hasActualSpend
-                  ? "MEASURED · PAIRED BASELINE"
-                  : `EXTRAPOLATED · $${costPerIter.toFixed(2)}/ITER`}
-              </span>
+              <ProvBadge prov={spendProv} />
             </div>
             <div
               className="mono"
@@ -474,9 +501,11 @@ function WasteBody({
               {fmtUSD(actualSpend, { cents: hasActualSpend })}
             </div>
             <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>
-              {hasActualSpend
+              {spendProv.mode === "measured"
                 ? `${fmtInt(totals.total_iterations)} iterations · real per-trial cost`
-                : `${fmtInt(totals.total_iterations)} iterations × $${costPerIter.toFixed(2)} per iter`}
+                : spendProv.mode === "projected"
+                  ? `${fmtInt(totals.total_iterations)} iterations · projected`
+                  : `${fmtInt(totals.total_iterations)} iterations × $${costPerIter.toFixed(2)} per iter`}
             </div>
           </div>
         </div>
@@ -635,23 +664,43 @@ function WasteBody({
             title: "Saved · by workload",
             rows: byWorkload,
             isOutcome: false,
-            source: "extrapolated" as const,
+            // The total is the hero (measured/projected/extrapolated per
+            // savedProv); the split is the events sample's shares.
+            tag: demo
+              ? `projected · shares from ${events.length}-run sample`
+              : `${savedProv.mode} total · sample shares`,
+            measuredTint: savedProv.mode === "measured",
+            tagTitle: demo
+              ? "The hero total is a projection (measured bench × your scale + $/iter); each workload's slice of it comes from that workload's share of avoided iterations in the events sample."
+              : "The total matches the hero above; each workload's slice comes from its share of avoided iterations in the events sample. Not a per-workload measurement.",
           },
           {
             title: "Saved · by outcome",
             rows: byOutcome.rows,
             isOutcome: true,
-            source: byOutcome.source,
+            tag: demo
+              ? `projected · ${byOutcome.rows.length} rows`
+              : `${byOutcome.source} · ${byOutcome.rows.length} rows`,
+            measuredTint: !demo && byOutcome.source === "measured",
+            tagTitle: demo
+              ? "Per-outcome dollars are the measured bench aggregates scaled to your fleet assumptions — a projection."
+              : byOutcome.source === "measured"
+                ? "Real dollars saved by LoopGain per outcome — paired-baseline measurement from /stats.aggregates.by_outcome. Not the without-LoopGain cost; it's the delta vs. matched no-LoopGain runs."
+                : "Dollars saved by LoopGain, extrapolated from savings_vs_fixed_cap × cost/iter across the events sample. Not a paired-baseline measurement, and not the without-LoopGain cost — it's the savings delta.",
           },
         ].map((b) => {
-          const isMeasured = b.source === "measured";
-          const tagBg = isMeasured
+          const tagBg = b.measuredTint
             ? "color-mix(in oklab, var(--band-fast) 18%, transparent)"
-            : "var(--surf-3)";
-          const tagColor = isMeasured ? "var(--band-fast)" : "var(--text-3)";
-          const tagTitle = isMeasured
-            ? "Real dollars saved by LoopGain per outcome — paired-baseline measurement from /stats.aggregates.by_outcome. Not the without-LoopGain cost; it's the delta vs. matched no-LoopGain runs."
-            : "Dollars saved by LoopGain, extrapolated from savings_vs_fixed_cap × cost/iter across the events sample. Not a paired-baseline measurement, and not the without-LoopGain cost — it's the savings delta.";
+            : demo
+              ? "color-mix(in oklab, var(--band-stall) 16%, transparent)"
+              : "var(--surf-3)";
+          const tagColor = b.measuredTint
+            ? "var(--band-fast)"
+            : demo
+              ? "var(--band-stall)"
+              : "var(--text-3)";
+          const allSubCent =
+            b.rows.length > 0 && b.rows.every((r) => Math.abs(r.value) < 0.005);
           return (
             <div key={b.title} className="card">
               <div className="card-h">
@@ -666,20 +715,30 @@ function WasteBody({
                     color: tagColor,
                     letterSpacing: "0.04em",
                   }}
-                  title={tagTitle}
+                  title={b.tagTitle}
                 >
-                  {b.source} · {b.rows.length} rows
+                  {b.tag}
                 </span>
               </div>
               <div style={{ padding: 14 }}>
-                <HBar
-                  rows={b.rows.slice(0, 10).map((r) => ({
-                    label: r.label,
-                    value: r.value,
-                    color: b.isOutcome ? OUTCOME_COLOR[r.label] ?? "var(--accent)" : "var(--accent)",
-                  }))}
-                  valueFmt={(v) => fmtUSD(v, { cents: isMeasured })}
-                />
+                {allSubCent ? (
+                  <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.5 }}>
+                    Every slice is under a cent at this fleet size — the split
+                    isn't meaningful yet. The fleet total above is the number
+                    to watch; this breakdown fills in as volume grows.
+                  </div>
+                ) : (
+                  <HBar
+                    rows={b.rows.slice(0, 10).map((r) => ({
+                      label: r.label,
+                      value: r.value,
+                      color: b.isOutcome
+                        ? OUTCOME_COLOR[r.label] ?? "var(--accent)"
+                        : "var(--accent)",
+                    }))}
+                    valueFmt={(v) => fmtUSD(v, { cents: b.measuredTint })}
+                  />
+                )}
               </div>
             </div>
           );

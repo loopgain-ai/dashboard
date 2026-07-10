@@ -54,6 +54,17 @@ export function AreaChart({
     return "M " + top.join(" L ") + " L " + bot.join(" L ") + " Z";
   }
 
+  // Y-axis label precision adapts to the axis scale: a sub-$10 chart
+  // labeled with toFixed(0) printed "$1" on two different gridlines
+  // (authed small-fleet Waste chart), and a projection-scale chart
+  // printed "$55889". Compact above 1k, decimals below.
+  const yDecimals = max < 1 ? 3 : max < 10 ? 2 : max < 100 ? 1 : 0;
+  const fmtY = (v: number): string => {
+    if (Math.abs(v) >= 1_000_000) return (v / 1_000_000).toFixed(1) + "M";
+    if (Math.abs(v) >= 1000) return (v / 1000).toFixed(1) + "k";
+    return v.toFixed(yDecimals);
+  };
+
   return (
     <svg width="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
       {[0, 0.5, 1].map((p) => {
@@ -77,7 +88,7 @@ export function AreaChart({
               fill="var(--text-3)"
             >
               {yPrefix}
-              {v.toFixed(0)}
+              {fmtY(v)}
             </text>
           </g>
         );

@@ -251,15 +251,25 @@ function IterationsToBest({
           <div>
             <div className="label" style={{ marginBottom: 10 }}>
               Iterations to best · distribution
+              <span
+                className="mono"
+                style={{ marginLeft: 8, fontSize: 10, color: "var(--text-3)", textTransform: "none" }}
+              >
+                shares of a {fmtInt(sample.n)}-run sample
+              </span>
             </div>
+            {/* Shares, not raw counts: the fleet headline next to this card
+                may be scaled (demo projection), and raw sample counts beside
+                scaled prose mixed two regimes in one card. Percentages are
+                scale-invariant. */}
             <HBar
               rows={sample.distribution.map((d) => ({
                 label: `iter ${d.iter}`,
-                value: d.count,
+                value: d.count / Math.max(sample.n, 1),
                 color: d.iter === 1 ? "var(--band-conv)" : "var(--band-stall)",
               }))}
-              max={distMax}
-              valueFmt={(v) => fmtInt(v)}
+              max={distMax / Math.max(sample.n, 1)}
+              valueFmt={(v) => fmtPct(v)}
             />
           </div>
         </div>
@@ -286,14 +296,23 @@ function IterationsToBest({
             {
               tone: "var(--band-osc)",
               head: "Cap too low",
-              big: fmtInt(cap1FalseStop),
-              bigSub: `loops (${fmtPct(cap1FalseStop / Math.max(fleet.withBestIndex, 1))})`,
+              // Share of the SAMPLE — cap1FalseStop is a sample count, and
+              // dividing it by the (possibly demo-scaled) fleet total printed
+              // "35 loops (0.0%)" under a 1M-loop projection.
+              big: fmtPct(cap1FalseStop / Math.max(sample.n, 1)),
+              bigSub: `${fmtInt(cap1FalseStop)} of ${fmtInt(sample.n)}-run sample`,
               body: (
                 <>
                   Stop at 1 iteration and you false-stop{" "}
-                  <span style={{ color: "var(--text-1)" }}>{fmtInt(cap1FalseStop)}</span> loops
-                  before their best — shipping a worse result. Even a cap of 2 still clips{" "}
-                  <span style={{ color: "var(--text-1)" }}>{fmtInt(cap2FalseStop)}</span>.
+                  <span style={{ color: "var(--text-1)" }}>
+                    {fmtPct(cap1FalseStop / Math.max(sample.n, 1))}
+                  </span>{" "}
+                  of loops before their best — shipping a worse result. Even a cap of 2
+                  still clips{" "}
+                  <span style={{ color: "var(--text-1)" }}>
+                    {fmtPct(cap2FalseStop / Math.max(sample.n, 1))}
+                  </span>
+                  .
                 </>
               ),
             },
@@ -455,6 +474,14 @@ function ConvergenceBody({
     [events],
   );
 
+  const measurableCount = useMemo(
+    () =>
+      events.filter(
+        (e) => typeof e.profile_median === "number" && e.profile_median > 0,
+      ).length,
+    [events],
+  );
+
   return (
     <>
       {/* Aβ statistics · 30d — relocated here from Overview's KPI quad
@@ -587,6 +614,16 @@ function ConvergenceBody({
           </div>
         </div>
         <ConvergenceOverTime events={events} rollingMedian={rolling} width={1080} height={400} yMax={yMax} />
+        {/* Sparse-fleet honesty: Aβ only exists for runs with ≥2 iterations,
+            so a healthy fleet that mostly converges at iter 1 plots far fewer
+            dots than it has runs. Say so, or a sparse chart reads as broken. */}
+        <div
+          className="mono"
+          style={{ marginTop: 6, fontSize: 10.5, color: "var(--text-3)", textAlign: "right" }}
+        >
+          {fmtInt(measurableCount)} measurable of {fmtInt(events.length)} runs shown — Aβ
+          requires ≥2 iterations; runs converging at iter 1 have no trajectory to plot
+        </div>
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>

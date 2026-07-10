@@ -14,7 +14,7 @@ import { OutcomeDistGauge, Sparkline, TrajectoryChart } from "../charts";
 import { Loaded } from "./PanelState";
 import { loopRouteId } from "../shell/routes";
 import type { RouteId, TimeRange } from "../shell";
-import { useAuth, useWindowSuffix, type LoadState } from "../../lib/api";
+import { useAuth, useProvenance, useWindowSuffix, type LoadState } from "../../lib/api";
 import type { EventDetailResponse, LoopEvent, Outcome, StatsResponse } from "../../types";
 
 // Visual mapping for the outcome strip. Drives the five-pill row in the
@@ -185,6 +185,8 @@ function OverviewBody({
   const savedDollars = hasActualSavings
     ? (totals.total_actual_dollars_saved as number)
     : totals.total_savings * costPerIter;
+  // Demo mode = projection; the measured badge must not imply otherwise.
+  const savedProv = useProvenance(hasActualSavings, costPerIter);
 
   // Fleet pulse: bucket events by time. Two modes.
   //   rolling-24h (default): the panel's original behavior — 24 hourly
@@ -377,7 +379,31 @@ function OverviewBody({
               gap: 12,
             }}
           >
-            <div className="label">{windowSuffix} · saved by LoopGain</div>
+            <div className="label">
+              {windowSuffix} · saved by LoopGain
+              {savedProv.mode !== "measured" && (
+                <span
+                  className="mono"
+                  style={{
+                    marginLeft: 10,
+                    fontSize: 9.5,
+                    padding: "2px 6px",
+                    borderRadius: 3,
+                    background:
+                      savedProv.mode === "projected"
+                        ? "color-mix(in oklab, var(--band-stall) 16%, transparent)"
+                        : "var(--surf-3)",
+                    color:
+                      savedProv.mode === "projected"
+                        ? "var(--band-stall)"
+                        : "var(--text-3)",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  {savedProv.badge}
+                </span>
+              )}
+            </div>
             <button
               type="button"
               className="chip"
@@ -429,7 +455,7 @@ function OverviewBody({
                 </span>
               </div>
             </div>
-            {fleetPulse.caption && (
+            {(fleetPulse.caption || demo) && (
               <div
                 className="mono"
                 style={{
@@ -438,7 +464,15 @@ function OverviewBody({
                   color: "var(--text-3)",
                 }}
               >
-                {fleetPulse.caption}
+                {[
+                  fleetPulse.caption,
+                  // The pulse counts RAW sample events — deliberately not
+                  // scaled to the fleet slider (scaled per-hour bars would
+                  // fabricate volume precision), so say so in demo.
+                  demo ? "activity pattern · representative sample of recorded runs" : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </div>
             )}
             <div style={{ marginTop: 10 }}>
@@ -582,36 +616,57 @@ function OverviewBody({
                 No events in window.
               </div>
             )}
-            {transitions.map((t, i) => (
-              <div
-                key={i}
-                className="recent-row"
-                style={{
-                  borderBottom: i < transitions.length - 1 ? "1px solid var(--border)" : "none",
-                }}
-              >
-                <div className="mono recent-ts" style={{ fontSize: 11, color: "var(--text-3)" }}>
-                  {fmtRel(t.ts)}
-                </div>
-                <StatePill band={t.band} size="sm" />
+            {transitions.map((t, i) => {
+              // Rows drill into Loop Detail — previously they were static
+              // text, a dead end on the most natural "look at this run"
+              // affordance in the product.
+              const clickable = t.workloadId !== "—";
+              return (
                 <div
-                  className="mono"
+                  key={i}
+                  className="recent-row"
+                  role={clickable ? "button" : undefined}
+                  tabIndex={clickable ? 0 : undefined}
+                  onClick={clickable ? () => setRoute(loopRouteId(t.workloadId)) : undefined}
+                  onKeyDown={
+                    clickable
+                      ? (e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setRoute(loopRouteId(t.workloadId));
+                          }
+                        }
+                      : undefined
+                  }
+                  title={clickable ? `Open ${t.workloadId} in Loop Detail` : undefined}
                   style={{
-                    fontSize: 11.5,
-                    color: "var(--text-1)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    minWidth: 0,
+                    borderBottom: i < transitions.length - 1 ? "1px solid var(--border)" : "none",
+                    cursor: clickable ? "pointer" : undefined,
                   }}
                 >
-                  {t.workloadId}
+                  <div className="mono recent-ts" style={{ fontSize: 11, color: "var(--text-3)" }}>
+                    {fmtRel(t.ts)}
+                  </div>
+                  <StatePill band={t.band} size="sm" />
+                  <div
+                    className="mono"
+                    style={{
+                      fontSize: 11.5,
+                      color: "var(--text-1)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      minWidth: 0,
+                    }}
+                  >
+                    {t.workloadId}
+                  </div>
+                  <div className="mono recent-iter" style={{ fontSize: 11, color: "var(--text-3)" }}>
+                    {t.iterations} iter
+                  </div>
                 </div>
-                <div className="mono recent-iter" style={{ fontSize: 11, color: "var(--text-3)" }}>
-                  {t.iterations} iter
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

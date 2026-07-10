@@ -4,6 +4,10 @@ export function fmtUSD(v: number, opts: { cents?: boolean } = {}): string {
   const abs = Math.abs(v);
   if (abs >= 1_000_000) return "$" + (v / 1_000_000).toFixed(2) + "M";
   if (abs >= 1000) return "$" + (v / 1000).toFixed(1) + "k";
+  // Sub-cent values must not render as "$0.00"/"$0" — a real-but-tiny
+  // saving displayed as zero reads as broken (the Waste by-workload
+  // wall-of-$0 bug). Below half a cent, say what it is.
+  if (abs > 0 && abs < 0.005) return (v < 0 ? "-" : "") + "<$0.01";
   return "$" + v.toFixed(opts.cents === false ? 0 : 2);
 }
 

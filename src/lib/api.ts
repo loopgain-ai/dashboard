@@ -459,6 +459,66 @@ export function useWindowSuffix(): string {
   return demo || bench ? "all-time" : "30d";
 }
 
+// ── Provenance ────────────────────────────────────────────────────────
+//
+// Every dollar figure on the dashboard is one of three things, and the
+// badge next to it must say which (claim-provenance rule: a projection
+// must never wear a measured badge):
+//   measured     — paired-baseline delta the receiver actually carries
+//                  (SUM(actual_dollars_saved/spent) over real runs)
+//   projected    — demo mode: measured bench numbers × the visitor's
+//                  fleet-scale and $/iter assumptions. Derived FROM
+//                  measurements, but the displayed number is a projection.
+//   extrapolated — no paired baseline: iteration counts × manual $/iter.
+export type ProvenanceMode = "measured" | "projected" | "extrapolated";
+
+export interface Provenance {
+  mode: ProvenanceMode;
+  badge: string;
+  /** The "Cents-precision; not an extrapolation." sentence is only true
+   *  for measured numbers. */
+  showNotExtrapolation: boolean;
+}
+
+/** Pure resolver — exported separately from the hook so loopgain-verify
+ *  can pin its truth table without a React renderer. */
+export function resolveProvenance(
+  demo: boolean,
+  hasActuals: boolean,
+  costPerIter?: number,
+): Provenance {
+  if (demo) {
+    return {
+      mode: "projected",
+      badge: "PROJECTED · FROM MEASURED BENCH",
+      showNotExtrapolation: false,
+    };
+  }
+  if (hasActuals) {
+    return {
+      mode: "measured",
+      badge: "MEASURED · PAIRED BASELINE",
+      showNotExtrapolation: true,
+    };
+  }
+  return {
+    mode: "extrapolated",
+    badge:
+      costPerIter != null
+        ? `EXTRAPOLATED · $${costPerIter.toFixed(2)}/ITER`
+        : "EXTRAPOLATED",
+    showNotExtrapolation: false,
+  };
+}
+
+/** Provenance for a dollar figure given whether the receiver carries the
+ *  measured value. Demo mode always wins: its numbers are scaled/re-costed
+ *  projections even though the underlying bench fields are measured. */
+export function useProvenance(hasActuals: boolean, costPerIter?: number): Provenance {
+  const { demo } = useAuth();
+  return resolveProvenance(demo, hasActuals, costPerIter);
+}
+
 // ── Generic data hook ─────────────────────────────────────────────────
 
 export type LoadState<T> =
@@ -644,14 +704,16 @@ export function useAuthProvider(): AuthCtx {
     setConnection({ status: "disconnected" });
     // Per the "no token defaults to demo" rule: disconnecting on an
     // authed dashboard sends the user to /demo (the public projection)
-    // rather than leaving them on / with the install snippet. Matches
-    // the initial-load redirect in main.tsx so the rule is consistent
-    // across both code paths. Skip the redirect if we're already on a
-    // public route (bench/demo) — those don't reach this handler via
-    // the disconnect button anyway, but defense-in-depth.
+    // rather than leaving them on / with the install snippet. On /demo
+    // itself the same button reads "Exit demo" — there the destination
+    // is the connect/onboarding screen (`/?connect=1`; main.tsx skips
+    // its demo redirect when ?connect is present, and App auto-opens
+    // the ConnectDialog). Without that branch the button was a no-op.
     if (typeof window !== "undefined") {
       const p = window.location.pathname;
-      if (!p.startsWith("/demo") && !p.startsWith("/benchmark")) {
+      if (p.startsWith("/demo")) {
+        window.location.replace("/?connect=1");
+      } else if (!p.startsWith("/benchmark")) {
         window.location.replace("/demo");
       }
     }

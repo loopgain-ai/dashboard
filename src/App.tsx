@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { version as APP_VERSION } from "../package.json";
 import { AuthContext, useAuthProvider } from "./lib/api";
 import { FilterContext, useFiltersProvider } from "./lib/filters";
-import { DemoParamsContext, useDemoParamsProvider } from "./lib/demo-params";
+import { DemoParamsContext, useDemoParams, useDemoParamsProvider } from "./lib/demo-params";
 import { useStats } from "./lib/data-hooks";
 import { ConnectDialog } from "./components/auth/ConnectDialog";
 import { MethodologyModal } from "./components/auth/MethodologyModal";
@@ -142,6 +142,12 @@ function AppInner() {
   const pollMs = LIVE_POLL_MS;
   const sinceHours = timeRangeHours(timeRange) ?? undefined;
 
+  // In demo mode the Demo Controls' $/iter is THE cost assumption — panels
+  // must not silently use the authed Settings value alongside it (two
+  // competing $/iter on one screen). Authed tenants keep their own setting.
+  const demoParams = useDemoParams();
+  const effectiveCostPerIter = demo ? demoParams.params.dollarsPerIter : costPerIter;
+
   // ── Workloads for palette ───────────────────────────────────────────
   const stats = useStats({ pollMs, includeCalibration });
   const workloads =
@@ -215,7 +221,7 @@ function AppInner() {
         return (
           <Overview
             setRoute={setRoute}
-            costPerIter={costPerIter}
+            costPerIter={effectiveCostPerIter}
             includeCalibration={includeCalibration}
             pollMs={pollMs}
             sinceHours={sinceHours}
@@ -229,7 +235,7 @@ function AppInner() {
       case "waste":
         return (
           <Waste
-            costPerIter={costPerIter}
+            costPerIter={effectiveCostPerIter}
             setCostPerIter={setCostPerIter}
             includeCalibration={includeCalibration}
             pollMs={pollMs}
@@ -255,7 +261,7 @@ function AppInner() {
         return (
           <Overview
             setRoute={setRoute}
-            costPerIter={costPerIter}
+            costPerIter={effectiveCostPerIter}
             includeCalibration={includeCalibration}
             pollMs={pollMs}
             sinceHours={sinceHours}
@@ -263,7 +269,7 @@ function AppInner() {
           />
         );
     }
-  }, [isAuthed, route, costPerIter, includeCalibration, pollMs, sinceHours, timeRange]);
+  }, [isAuthed, route, costPerIter, effectiveCostPerIter, includeCalibration, pollMs, sinceHours, timeRange]);
 
   return (
     <div style={{ display: "flex", height: "100vh", background: "var(--bg-0)" }}>

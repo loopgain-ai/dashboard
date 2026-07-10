@@ -14,7 +14,11 @@ import "./styles/index.css";
 if (typeof window !== "undefined") {
   const p = window.location.pathname;
   const isPublicRoute = p.startsWith("/demo") || p.startsWith("/benchmark");
-  if (!isPublicRoute && !loadConfig()) {
+  // ?connect=1 is the "Exit demo → connect your own tenant" path: the
+  // visitor deliberately left /demo for the onboarding screen, so don't
+  // bounce them straight back (App auto-opens the ConnectDialog).
+  const wantsConnect = new URLSearchParams(window.location.search).has("connect");
+  if (!isPublicRoute && !wantsConnect && !loadConfig()) {
     window.location.replace("/demo");
   }
 }

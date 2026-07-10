@@ -106,3 +106,36 @@ export function sumBy<T>(arr: ReadonlyArray<T>, key: (t: T) => number | null | u
   }
   return s;
 }
+
+// ── Hero-coherence normalization ──────────────────────────────────────
+//
+// The Waste panel's headline dollars come from tenant-wide aggregates
+// (or a demo projection of them); its breakdowns and daily series come
+// from a bounded EVENTS SAMPLE. Rendering sample-resolution dollars next
+// to an aggregate hero mixes two scaling regimes on one screen — in demo
+// mode by ~1000× ($3 bars under an $828.2k hero). The rule these helpers
+// enforce: every dollar decomposition on the panel INTEGRATES TO THE
+// HERO it sits under. Pinned by loopgain-verify `dash.demo_scaling_coherence`.
+
+/** Factor that rescales sample-derived contributions so they sum to the
+ *  hero total. 1 when the sample carries no weight (nothing to scale). */
+export function scaleFactorToTotal(sampleSum: number, heroTotal: number): number {
+  if (!Number.isFinite(sampleSum) || sampleSum <= 0) return 1;
+  if (!Number.isFinite(heroTotal) || heroTotal < 0) return 1;
+  return heroTotal / sampleSum;
+}
+
+/** Allocate a hero total across labeled rows proportionally to their
+ *  sample weights. Rows with non-positive weight are dropped. The
+ *  returned values sum to `heroTotal` (up to float error). */
+export function allocateByShare(
+  rows: ReadonlyArray<{ label: string; weight: number }>,
+  heroTotal: number,
+): Array<{ label: string; value: number }> {
+  const positive = rows.filter((r) => Number.isFinite(r.weight) && r.weight > 0);
+  const total = positive.reduce((s, r) => s + r.weight, 0);
+  if (total <= 0 || !Number.isFinite(heroTotal) || heroTotal <= 0) return [];
+  return positive
+    .map((r) => ({ label: r.label, value: (r.weight / total) * heroTotal }))
+    .sort((a, b) => b.value - a.value);
+}
