@@ -55,7 +55,16 @@ declare global {
   }
 }
 
-function useTurnstile(): { slot: ReactNode; getToken: () => string } {
+function useTurnstile(): {
+  slot: ReactNode;
+  /** Resolve the current token, waiting for the widget if it hasn't
+   *  finished verifying yet — the invisible challenge takes a moment,
+   *  and submitting before it resolves must wait, not fail. */
+  waitForToken: (timeoutMs?: number) => Promise<string>;
+  /** Mint a fresh token after a failed attempt (tokens are single-use —
+   *  resubmitting a consumed one fails verification server-side). */
+  reset: () => void;
+} {
   const ref = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | null>(null);
   useEffect(() => {
@@ -81,14 +90,34 @@ function useTurnstile(): { slot: ReactNode; getToken: () => string } {
       cancelled = true;
     };
   }, []);
+  const getToken = () => {
+    if (!window.turnstile || widgetId.current === null) return "";
+    try {
+      return window.turnstile.getResponse(widgetId.current) || "";
+    } catch {
+      return "";
+    }
+  };
   return {
-    slot: <div ref={ref} style={{ minHeight: 0 }} />,
-    getToken: () => {
-      if (!window.turnstile || widgetId.current === null) return "";
-      try {
-        return window.turnstile.getResponse(widgetId.current) || "";
-      } catch {
-        return "";
+    // The widget box sits directly above the submit button — keep air
+    // between them when it becomes visible (interactive/success states).
+    slot: <div ref={ref} style={{ minHeight: 0, marginBottom: 14 }} />,
+    waitForToken: async (timeoutMs = 15000) => {
+      const deadline = Date.now() + timeoutMs;
+      let token = getToken();
+      while (!token && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 250));
+        token = getToken();
+      }
+      return token;
+    },
+    reset: () => {
+      if (window.turnstile && widgetId.current !== null) {
+        try {
+          window.turnstile.reset(widgetId.current);
+        } catch {
+          /* widget gone — next submit will surface it */
+        }
       }
     },
   };
@@ -192,16 +221,29 @@ export function SignupPage() {
       return;
     }
     setBusy(true);
+    // The invisible browser check takes a moment — wait for its token
+    // instead of submitting an empty one (which reads as a failure).
+    const tsToken = await turnstile.waitForToken();
+    if (!tsToken) {
+      setBusy(false);
+      setError("Couldn't complete the browser check — please reload and try again.");
+      return;
+    }
     const res = await authPost("/signup", {
       email,
       password,
       consent,
       newsletter_optin: newsletter,
-      cf_turnstile_response: turnstile.getToken(),
+      cf_turnstile_response: tsToken,
     });
     setBusy(false);
-    if (res.ok) setDone(true);
-    else setError(res.error);
+    if (res.ok) {
+      setDone(true);
+    } else {
+      setError(res.error);
+      // Tokens are single-use; mint a fresh one so a retry can succeed.
+      turnstile.reset();
+    }
   }
 
   if (done) {
