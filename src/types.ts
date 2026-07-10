@@ -28,7 +28,9 @@ export type Band =
 /** GET /v1/stats response. */
 export interface StatsResponse {
   customer_id: string;
-  window_days: 30;
+  /** 30 for the authed rolling window; null = all-time (public bench route,
+   *  where the dataset is a static artifact with fixed timestamps). */
+  window_days: number | null;
   since: number;
   outcomes: Array<{ outcome: Outcome; count: number }>;
   totals: {

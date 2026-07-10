@@ -11,6 +11,7 @@ import { Chip, Icon, PanelHeader } from "../primitives";
 import { AreaChart, HBar } from "../charts";
 import { Loaded } from "./PanelState";
 import { fmtUSD, fmtInt, fmtPct } from "../../lib/format";
+import { useWindowSuffix } from "../../lib/api";
 import { BENCH_OVERRUN, FIXED_CAP_BASELINE, iterationWasteFleet } from "../../lib/iteration-waste";
 import type { LoopEvent, StatsResponse } from "../../types";
 
@@ -69,6 +70,7 @@ function WasteBody({
   costPerIter: number;
   setCostPerIter: (n: number) => void;
 }) {
+  const windowSuffix = useWindowSuffix();
   const totals = stats.totals ?? {
     event_count: 0,
     total_iterations: 0,
@@ -314,7 +316,7 @@ function WasteBody({
       <div className="card waste-hero" style={{ padding: 28 }}>
         <div>
           <div className="label">
-            Saved by LoopGain · 30d
+            Saved by LoopGain · {windowSuffix}
             {hasActualSavings && (
               <span
                 className="mono"

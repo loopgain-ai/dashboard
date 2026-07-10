@@ -14,7 +14,7 @@ import { OutcomeDistGauge, Sparkline, TrajectoryChart } from "../charts";
 import { Loaded } from "./PanelState";
 import { loopRouteId } from "../shell/routes";
 import type { RouteId, TimeRange } from "../shell";
-import type { LoadState } from "../../lib/api";
+import { useAuth, useWindowSuffix, type LoadState } from "../../lib/api";
 import type { EventDetailResponse, LoopEvent, Outcome, StatsResponse } from "../../types";
 
 // Visual mapping for the outcome strip. Drives the five-pill row in the
@@ -128,6 +128,12 @@ function OverviewBody({
   isStale: boolean;
   timeRange: TimeRange;
 }) {
+  const { demo, bench } = useAuth();
+  // Bench/demo read the static benchmark dataset all-time (the receiver's
+  // public routes force sinceEpoch=0), so the "Fleet · 30d" eyebrow would
+  // mislabel the window there.
+  const windowLabel = demo || bench ? "bench dataset · all-time" : timeRange;
+  const windowSuffix = useWindowSuffix();
   // Outcome counts come straight from /v1/stats.outcomes — tenant-wide,
   // not sample-biased. Outcomes are the terminal state recorded by the
   // library; the receiver SUMs them on every event in window.
@@ -282,8 +288,8 @@ function OverviewBody({
       <PanelHeader
         eyebrow={
           isStale
-            ? `Fleet · ${timeRange} (refreshing…)`
-            : `Fleet · ${timeRange}`
+            ? `Fleet · ${windowLabel} (refreshing…)`
+            : `Fleet · ${windowLabel}`
         }
         title="Overview"
         right={
@@ -371,7 +377,7 @@ function OverviewBody({
               gap: 12,
             }}
           >
-            <div className="label">30d · saved by LoopGain</div>
+            <div className="label">{windowSuffix} · saved by LoopGain</div>
             <button
               type="button"
               className="chip"
@@ -526,22 +532,22 @@ function OverviewBody({
               totals.rollbacks > 0 ? totals.event_count / totals.rollbacks : 0;
             return [
               {
-                label: "Iterations · 30d",
+                label: `Iterations · ${windowSuffix}`,
                 value: `${fmtCompact(totals.total_iterations)} / ${fmtCompact(cap)}`,
                 sub: `${reductionPct.toFixed(1)}% reduction vs max_iter=${FIXED_CAP_BASELINE} cap · ${fmtCompact(totals.event_count)} runs`,
               },
               {
-                label: "Convergence rate · 30d",
+                label: `Convergence rate · ${windowSuffix}`,
                 value: `${convRatePct.toFixed(1)}%`,
                 sub: `${fmtCompact(convCount)} of ${fmtCompact(totals.event_count)} runs`,
               },
               {
-                label: "Avg iters per run · 30d",
+                label: `Avg iters per run · ${windowSuffix}`,
                 value: avgIters.toFixed(2),
                 sub: `vs ${FIXED_CAP_BASELINE.toFixed(1)} cap · ${sooner.toFixed(0)}% sooner to stop`,
               },
               {
-                label: "Rollbacks · 30d",
+                label: `Rollbacks · ${windowSuffix}`,
                 value: fmtCompact(totals.rollbacks),
                 sub:
                   totals.rollbacks > 0

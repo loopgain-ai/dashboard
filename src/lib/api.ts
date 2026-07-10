@@ -450,6 +450,15 @@ export function useAuth(): AuthCtx {
   return ctx;
 }
 
+/** Short window suffix for stat labels ("Iterations · 30d"). Authed reads
+ *  use the receiver's rolling 30-day window; bench/demo read the static
+ *  benchmark dataset all-time (the public routes force sinceEpoch=0), so
+ *  a hardcoded "30d" would mislabel the window there. */
+export function useWindowSuffix(): string {
+  const { demo, bench } = useAuth();
+  return demo || bench ? "all-time" : "30d";
+}
+
 // ── Generic data hook ─────────────────────────────────────────────────
 
 export type LoadState<T> =

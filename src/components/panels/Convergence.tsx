@@ -9,6 +9,7 @@
 
 import { useMemo, useState } from "react";
 import { useEvents, useProfiles, useStats } from "../../lib/data-hooks";
+import { useWindowSuffix } from "../../lib/api";
 import { PanelHeader, Chip, StatePill } from "../primitives";
 import { ConvergenceOverTime, HBar } from "../charts";
 import { Loaded } from "./PanelState";
@@ -395,6 +396,7 @@ function ConvergenceBody({
   yMax: number;
   showTrend: boolean;
 }) {
+  const windowSuffix = useWindowSuffix();
   // Rolling median over time — sliding window. For each daily timestamp
   // between min(ts) and max(ts), take the median of all measurable events
   // within ±half-window. Step + window sized to match the chart's actual
@@ -463,7 +465,7 @@ function ConvergenceBody({
       <div className="card" style={{ padding: 18, marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
           <h3 style={{ margin: 0, fontSize: 13, fontWeight: 500 }}>
-            Aβ statistics · 30d
+            Aβ statistics · {windowSuffix}
           </h3>
           <span className="mono" style={{ fontSize: 10.5, color: "var(--text-3)" }}>
             tenant-wide aggregates · /v1/stats
