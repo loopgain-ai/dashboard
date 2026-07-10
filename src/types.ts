@@ -28,6 +28,11 @@ export type Band =
 /** GET /v1/stats response. */
 export interface StatsResponse {
   customer_id: string;
+  /** Pricing tier ('individual' | 'team' | 'enterprise'); null =
+   *  unclassified (pre-tier tenants, public bench route) or a receiver
+   *  that predates the field. Drives tier-appropriate UI like the alert
+   *  editor's Team-upgrade panel. */
+  tier?: string | null;
   /** 30 for the authed rolling window; null = all-time (public bench route,
    *  where the dataset is a static artifact with fixed timestamps). */
   window_days: number | null;

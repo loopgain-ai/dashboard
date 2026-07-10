@@ -214,6 +214,13 @@ function ruleToPayload(r: AlertRule): AlertRulePayload {
 function AlertRulesCard() {
   const { config, demo } = useAuth();
   const { state, refresh } = useAlertRules();
+  // Alerts are a Team-tier feature. The receiver enforces this on the
+  // write verbs (403 team_tier_required); the UI mirrors it so an
+  // Individual-tier user sees the upgrade path instead of a dead form.
+  const statsForTier = useStats({});
+  const isIndividualTier =
+    statsForTier.state.status === "ok" &&
+    statsForTier.state.data.tier === "individual";
   const [editingId, setEditingId] = useState<number | "new" | null>(null);
   const [draft, setDraft] = useState<AlertRulePayload>(() => defaultPayload());
   const [submitting, setSubmitting] = useState(false);
@@ -312,10 +319,42 @@ function AlertRulesCard() {
     <div className="card">
       <div className="card-h">
         <h3>Alert rules · {rules.filter((r) => r.enabled).length} active</h3>
-        <Chip onClick={startNew}>
-          <Icon.Bolt /> New rule
-        </Chip>
+        {!isIndividualTier && (
+          <Chip onClick={startNew}>
+            <Icon.Bolt /> New rule
+          </Chip>
+        )}
       </div>
+
+      {isIndividualTier && (
+        <div
+          style={{
+            padding: "12px 14px",
+            background: "color-mix(in oklab, var(--accent) 7%, transparent)",
+            border: "1px solid color-mix(in oklab, var(--accent) 25%, transparent)",
+            borderRadius: 5,
+            margin: 14,
+            fontSize: 11.5,
+            color: "var(--text-2)",
+            lineHeight: 1.5,
+          }}
+        >
+          <span className="mono" style={{ color: "var(--accent)" }}>
+            Team feature
+          </span>{" "}
+          · Alert delivery to Slack, email, and webhooks is part of the Team
+          tier ($199/mo per workspace). Existing rules keep evaluating and can
+          be deleted; creating, editing and testing rules requires an upgrade.{" "}
+          <a
+            href="https://loopgain.ai/#pricing"
+            target="_blank"
+            rel="noreferrer"
+            style={{ color: "var(--accent)", textDecoration: "underline" }}
+          >
+            See pricing
+          </a>
+        </div>
+      )}
 
       {demo && (
         <div
@@ -381,6 +420,7 @@ function AlertRulesCard() {
             onTest={() => fireTest(r)}
             testResult={testResults[r.id]}
             disabled={demo}
+            writesLocked={isIndividualTier}
           />
         ),
       )}
@@ -407,6 +447,7 @@ function RuleRow({
   onTest,
   testResult,
   disabled,
+  writesLocked = false,
 }: {
   r: AlertRule;
   onEdit: () => void;
@@ -415,7 +456,11 @@ function RuleRow({
   onTest: () => void;
   testResult?: string;
   disabled: boolean;
+  /** Team-tier gate: test/edit/toggle locked, DELETE stays available so a
+   *  downgraded user is never trapped with a firing rule. */
+  writesLocked?: boolean;
 }) {
+  const lockWrite = disabled || writesLocked;
   return (
     <div
       style={{
@@ -429,7 +474,7 @@ function RuleRow({
     >
       <button
         type="button"
-        onClick={disabled ? undefined : onToggle}
+        onClick={lockWrite ? undefined : onToggle}
         title={r.enabled ? "Disable" : "Enable"}
         style={{
           width: 30,
@@ -437,8 +482,8 @@ function RuleRow({
           borderRadius: 8,
           background: r.enabled ? "var(--accent)" : "var(--surf-3)",
           position: "relative",
-          opacity: disabled ? 0.5 : 1,
-          cursor: disabled ? "not-allowed" : "pointer",
+          opacity: lockWrite ? 0.5 : 1,
+          cursor: lockWrite ? "not-allowed" : "pointer",
         }}
       >
         <span
@@ -492,8 +537,8 @@ function RuleRow({
       </div>
       <button
         type="button"
-        onClick={disabled ? undefined : onTest}
-        disabled={disabled}
+        onClick={lockWrite ? undefined : onTest}
+        disabled={lockWrite}
         title="Send a test delivery through this rule's channel"
         style={{
           color: "var(--text-2)",
@@ -501,8 +546,8 @@ function RuleRow({
           borderRadius: 4,
           fontSize: 11,
           fontFamily: "var(--mono)",
-          opacity: disabled ? 0.5 : 1,
-          cursor: disabled ? "not-allowed" : "pointer",
+          opacity: lockWrite ? 0.5 : 1,
+          cursor: lockWrite ? "not-allowed" : "pointer",
         }}
       >
         test
@@ -510,15 +555,15 @@ function RuleRow({
       <button
         type="button"
         onClick={onEdit}
-        disabled={disabled}
+        disabled={lockWrite}
         style={{
           color: "var(--text-2)",
           padding: "4px 8px",
           borderRadius: 4,
           fontSize: 11,
           fontFamily: "var(--mono)",
-          opacity: disabled ? 0.5 : 1,
-          cursor: disabled ? "not-allowed" : "pointer",
+          opacity: lockWrite ? 0.5 : 1,
+          cursor: lockWrite ? "not-allowed" : "pointer",
         }}
       >
         edit
