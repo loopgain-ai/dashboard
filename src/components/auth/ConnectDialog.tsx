@@ -163,6 +163,27 @@ export function ConnectDialog({ open, onClose }: Props) {
             {busy ? "Connecting…" : "Connect"}
           </button>
         </div>
+
+        <p
+          style={{
+            margin: 0,
+            paddingTop: 12,
+            borderTop: "1px solid var(--border)",
+            fontSize: 12,
+            color: "var(--text-3)",
+            lineHeight: 1.5,
+          }}
+        >
+          Have a LoopGain account?{" "}
+          <a href="/login" style={{ color: "var(--accent)" }}>
+            Log in
+          </a>{" "}
+          — your endpoint and token load automatically. New here?{" "}
+          <a href="/signup" style={{ color: "var(--accent)" }}>
+            Sign up free
+          </a>
+          .
+        </p>
       </form>
     </dialog>
   );

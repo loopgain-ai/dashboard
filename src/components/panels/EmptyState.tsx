@@ -398,8 +398,11 @@ export function EmptyState({ openConnect }: Props) {
                     sign up — free
                   </a>{" "}
                   (Individual tier, no card — verify your email and your token
-                  is minted automatically; logging in configures this
-                  dashboard for you).{" "}
+                  is minted automatically). Already have an account?{" "}
+                  <a href="/login" style={{ color: "var(--accent)" }}>
+                    Log in
+                  </a>{" "}
+                  and this dashboard configures itself.{" "}
                 </>
               )}
               Self-hosted: provision via the{" "}

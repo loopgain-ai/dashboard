@@ -509,6 +509,24 @@ function DemoBanner({
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>
         <a
+          href="/login"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            height: 28,
+            padding: "0 12px",
+            borderRadius: 5,
+            border: "1px solid var(--border)",
+            color: "var(--text-1)",
+            textDecoration: "none",
+            whiteSpace: "nowrap",
+            fontSize: 12,
+            cursor: "pointer",
+          }}
+        >
+          Log in
+        </a>
+        <a
           href="/signup"
           style={{
             display: "inline-flex",
@@ -612,6 +630,24 @@ function BenchBanner() {
         </span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>
+        <a
+          href="/login"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            height: 28,
+            padding: "0 12px",
+            borderRadius: 5,
+            border: "1px solid var(--border)",
+            color: "var(--text-1)",
+            textDecoration: "none",
+            whiteSpace: "nowrap",
+            fontSize: 12,
+            cursor: "pointer",
+          }}
+        >
+          Log in
+        </a>
         <a
           href="/signup"
           style={{
