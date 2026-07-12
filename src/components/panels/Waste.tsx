@@ -69,7 +69,7 @@ export function Waste({
 }: Props) {
   const { demo, bench } = useAuth();
   const stats = useStats({ pollMs, includeCalibration });
-  const events = useEvents({ pollMs, sinceHours });
+  const events = useEvents({ pollMs, sinceHours, includeCalibration });
   // The Waste Report is a Team-tier feature (landing #pricing). Individual
   // tenants get the gate card; the demo and /benchmark deliberately show
   // it in full (the demo banner says it includes every Team feature).

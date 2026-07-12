@@ -20,10 +20,11 @@ import type { EventDetail, PerIteration, ProfileEvent } from "../../types";
 interface Props {
   workloadId: string;
   setRoute: (r: RouteId) => void;
+  includeCalibration?: boolean;
 }
 
-export function LoopDetail({ workloadId, setRoute }: Props) {
-  const profiles = useProfiles({ workloadId });
+export function LoopDetail({ workloadId, setRoute, includeCalibration }: Props) {
+  const profiles = useProfiles({ workloadId, includeCalibration });
   return (
     <div style={{ padding: 24 }}>
       <Loaded state={profiles.state}>

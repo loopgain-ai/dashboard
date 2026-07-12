@@ -232,7 +232,14 @@ function AppInner() {
     }
     if (isLoopRoute(route)) {
       const workloadId = loopFromRoute(route);
-      if (workloadId) return <LoopDetail workloadId={workloadId} setRoute={setRoute} />;
+      if (workloadId)
+        return (
+          <LoopDetail
+            workloadId={workloadId}
+            setRoute={setRoute}
+            includeCalibration={includeCalibration}
+          />
+        );
     }
     switch (route) {
       case "overview":
@@ -247,9 +254,22 @@ function AppInner() {
           />
         );
       case "health-map":
-        return <HealthMap setRoute={setRoute} pollMs={pollMs} sinceHours={sinceHours} />;
+        return (
+          <HealthMap
+            setRoute={setRoute}
+            pollMs={pollMs}
+            sinceHours={sinceHours}
+            includeCalibration={includeCalibration}
+          />
+        );
       case "convergence":
-        return <Convergence pollMs={pollMs} sinceHours={sinceHours} />;
+        return (
+          <Convergence
+            pollMs={pollMs}
+            sinceHours={sinceHours}
+            includeCalibration={includeCalibration}
+          />
+        );
       case "waste":
         return (
           <Waste
@@ -261,7 +281,13 @@ function AppInner() {
           />
         );
       case "rollbacks":
-        return <Rollbacks pollMs={pollMs} sinceHours={sinceHours} />;
+        return (
+          <Rollbacks
+            pollMs={pollMs}
+            sinceHours={sinceHours}
+            includeCalibration={includeCalibration}
+          />
+        );
       case "alerts":
         return <Alerts setRoute={setRoute} />;
       case "settings":

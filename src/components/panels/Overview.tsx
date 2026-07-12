@@ -94,7 +94,7 @@ export function Overview({
   timeRange,
 }: Props) {
   const stats = useStats({ pollMs, includeCalibration });
-  const events = useEvents({ pollMs, sinceHours });
+  const events = useEvents({ pollMs, sinceHours, includeCalibration });
   return (
     <div style={{ padding: 24, maxWidth: 1400, margin: "0 auto" }}>
       <Loaded state={events.state}>

@@ -119,7 +119,7 @@ export function useStats(
 }
 
 export function useProfiles(
-  opts: { workloadId?: string; sinceHours?: number; pollMs?: number } = {},
+  opts: { workloadId?: string; sinceHours?: number; pollMs?: number; includeCalibration?: boolean } = {},
 ): { state: LoadState<ProfilesResponse>; refresh: () => void } {
   const { demo, bench } = useAuth();
   const replay = useDemoReplay();
@@ -133,6 +133,7 @@ export function useProfiles(
     framework: filters.framework,
     loop_type: filters.loop_type,
     team: filters.team,
+    includeCalibration: opts.includeCalibration,
   };
   const { state, refresh } = useApi<ProfilesResponse>(
     demo || bench
@@ -144,6 +145,7 @@ export function useProfiles(
       filters.framework,
       filters.loop_type,
       filters.team,
+      opts.includeCalibration ?? false,
     ],
     {
       pollMs: opts.pollMs,
@@ -166,7 +168,7 @@ export function useProfiles(
 }
 
 export function useEvents(
-  opts: { rollbacksOnly?: boolean; sinceHours?: number; pollMs?: number } = {},
+  opts: { rollbacksOnly?: boolean; sinceHours?: number; pollMs?: number; includeCalibration?: boolean } = {},
 ): { state: LoadState<EventsResponse>; refresh: () => void } {
   const { demo, bench } = useAuth();
   const replay = useDemoReplay();
@@ -177,6 +179,7 @@ export function useEvents(
     loop_type: filters.loop_type,
     team: filters.team,
     workload_id: filters.workload_id,
+    includeCalibration: opts.includeCalibration,
   };
   const { state, refresh } = useApi<EventsResponse>(
     demo || bench
@@ -188,6 +191,7 @@ export function useEvents(
       filters.loop_type,
       filters.team,
       filters.workload_id,
+      opts.includeCalibration ?? false,
     ],
     {
       pollMs: opts.pollMs,

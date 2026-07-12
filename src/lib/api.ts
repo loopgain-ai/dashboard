@@ -286,7 +286,7 @@ export function getStats(
 
 export function getProfiles(
   c: Config,
-  opts: { workloadId?: string; sinceHours?: number } & FilterSet = {},
+  opts: { workloadId?: string; sinceHours?: number; includeCalibration?: boolean } & FilterSet = {},
   signal?: AbortSignal,
 ): Promise<ProfilesResponse> {
   return apiGet<ProfilesResponse>(
@@ -299,6 +299,7 @@ export function getProfiles(
       framework: opts.framework,
       loop_type: opts.loop_type,
       team: opts.team,
+      include_calibration: opts.includeCalibration ? "true" : undefined,
     },
     signal,
   );
@@ -306,7 +307,7 @@ export function getProfiles(
 
 export function getEvents(
   c: Config,
-  opts: { rollbacksOnly?: boolean } & FilterSet = {},
+  opts: { rollbacksOnly?: boolean; includeCalibration?: boolean } & FilterSet = {},
   signal?: AbortSignal,
 ): Promise<EventsResponse> {
   return apiGet<EventsResponse>(
@@ -319,6 +320,7 @@ export function getEvents(
       loop_type: opts.loop_type,
       team: opts.team,
       workload_id: opts.workload_id,
+      include_calibration: opts.includeCalibration ? "true" : undefined,
     },
     signal,
   );

@@ -26,11 +26,12 @@ import type { LoopEvent, ProfileEvent, StatsResponse } from "../../types";
 interface Props {
   pollMs?: number;
   sinceHours?: number;
+  includeCalibration?: boolean;
 }
 
-export function Convergence({ pollMs, sinceHours }: Props) {
-  const stats = useStats({ pollMs });
-  const events = useEvents({ pollMs, sinceHours });
+export function Convergence({ pollMs, sinceHours, includeCalibration }: Props) {
+  const stats = useStats({ pollMs, includeCalibration });
+  const events = useEvents({ pollMs, sinceHours, includeCalibration });
   const [workloadFilter, setWorkloadFilter] = useState<string | null>(null);
   const [yMax, setYMax] = useState<number>(1.6);
   const [showTrend, setShowTrend] = useState<boolean>(true);
@@ -38,6 +39,7 @@ export function Convergence({ pollMs, sinceHours }: Props) {
     workloadId: workloadFilter ?? undefined,
     sinceHours,
     pollMs,
+    includeCalibration,
   });
 
   return (
