@@ -31,6 +31,23 @@ export const BAND_COLOR: Record<Band, string> = {
   DIVERGING:     "var(--band-div)",
 };
 
+// ── Terminal vs non-terminal outcomes ────────────────────────────────
+//
+// Some senders emit MID-LOOP snapshot events (e.g. Slipway repair gates:
+// one `in_progress` event per repair iteration) alongside the terminal
+// event. A snapshot is progress telemetry, not a finished run — counting
+// it in a "% of runs converged" denominator deflates the rate with rows
+// that haven't resolved (seen live 2026-07-12: 832 of 1,882 events).
+// Unknown future outcomes default to terminal: they describe how a loop
+// ENDED unless explicitly of the in-flight kind.
+export const NON_TERMINAL_OUTCOMES: ReadonlySet<string> = new Set(["in_progress"]);
+
+/** True when the outcome describes a finished run (counts toward run-rate
+ *  denominators); false for mid-loop snapshots. */
+export function isTerminalOutcome(outcome: string): boolean {
+  return !NON_TERMINAL_OUTCOMES.has(outcome);
+}
+
 /** Classify a raw Aβ value into a band. */
 export function bandFromAB(ab: number): Band {
   if (ab < 0.3) return "FAST_CONVERGE";

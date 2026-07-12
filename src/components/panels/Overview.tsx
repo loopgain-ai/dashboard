@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useEventDetail, useEvents, useStats } from "../../lib/data-hooks";
-import { bandFromEvent } from "../../lib/bands";
+import { bandFromEvent, isTerminalOutcome } from "../../lib/bands";
 import { fmtRel, fmtTime, fmtUSD, fmtInt, fmtCompact, fmtPct } from "../../lib/format";
 import { iterationWasteFleet } from "../../lib/iteration-waste";
 // Hardcoded fixed-cap baseline used in the "Iterations · 30d" tile. Matches
@@ -161,8 +161,20 @@ function OverviewBody({
   // on the left card. Sourced from /v1/stats.outcomes server-side counts
   // (not the recency-biased /events sample), so the gauge reflects
   // tenant-wide reality. Bench reads 1302 / 2000 = 65.1%.
+  //
+  // Denominator = FINISHED runs only. Mid-loop snapshot events (outcome
+  // in_progress — e.g. Slipway repair gates emit one per repair iteration)
+  // are progress telemetry, not runs that resolved; counting them deflated
+  // "% converged" to 44% on a healthy tenant (2026-07-12, Dave's call:
+  // exclude non-terminal from the run denominator). The excluded count is
+  // disclosed under the band strip, never silently dropped.
   const convCount = outcomeCounts["converged"] ?? 0;
-  const convergenceRate = totalEvents > 0 ? (convCount / totalEvents) * 100 : 0;
+  const terminalEvents = stats.outcomes.reduce(
+    (s, row) => s + (isTerminalOutcome(row.outcome) ? row.count : 0),
+    0,
+  );
+  const inProgressCount = totalEvents - terminalEvents > 0 ? totalEvents - terminalEvents : 0;
+  const convergenceRate = terminalEvents > 0 ? (convCount / terminalEvents) * 100 : 0;
   // Cells with non-zero matching outcomes; render this set so a healthy
   // tenant doesn't see five zeros next to one number.
   const visibleCells = useMemo(
@@ -390,7 +402,7 @@ function OverviewBody({
               <OutcomeDistGauge
                 valueLabel="% CONVERGED"
                 value={convergenceRate}
-                valueSub={`${fmtCompact(convCount)} of ${fmtCompact(totalEvents)} runs`}
+                valueSub={`${fmtCompact(convCount)} of ${fmtCompact(terminalEvents)} finished runs`}
                 slices={visibleCells.map((cell) => ({
                   label: cell.short,
                   count: cell.count,
@@ -401,7 +413,7 @@ function OverviewBody({
           </div>
           <div className="band-strip">
             {visibleCells.map((cell) => {
-              const pct = totalEvents > 0 ? (cell.count / totalEvents) * 100 : 0;
+              const pct = terminalEvents > 0 ? (cell.count / terminalEvents) * 100 : 0;
               return (
                 <div key={cell.key} className="band-cell">
                   <div
@@ -432,6 +444,20 @@ function OverviewBody({
               );
             })}
           </div>
+          {inProgressCount > 0 && (
+            <div
+              className="mono"
+              style={{
+                fontSize: 10,
+                color: "var(--text-3)",
+                textAlign: "center",
+                paddingBottom: 10,
+              }}
+            >
+              + {fmtInt(inProgressCount)} in-progress snapshot
+              {inProgressCount === 1 ? "" : "s"} not counted as runs
+            </div>
+          )}
         </div>
 
         <div
@@ -668,8 +694,10 @@ function OverviewBody({
             // methodology footnote).
             const cap = totals.event_count * FIXED_CAP_BASELINE;
             const reductionPct = cap > 0 ? (totals.total_savings / cap) * 100 : 0;
+            // Same finished-runs denominator as the gauge (see above) —
+            // the two surfaces must never disagree on the same rate.
             const convRatePct =
-              totals.event_count > 0 ? (convCount / totals.event_count) * 100 : 0;
+              terminalEvents > 0 ? (convCount / terminalEvents) * 100 : 0;
             const avgIters =
               totals.event_count > 0
                 ? totals.total_iterations / totals.event_count
@@ -689,7 +717,7 @@ function OverviewBody({
               {
                 label: `Convergence rate · ${windowSuffix}`,
                 value: `${convRatePct.toFixed(1)}%`,
-                sub: `${fmtCompact(convCount)} of ${fmtCompact(totals.event_count)} runs`,
+                sub: `${fmtCompact(convCount)} of ${fmtCompact(terminalEvents)} finished runs`,
               },
               {
                 label: `Avg iters per run · ${windowSuffix}`,
