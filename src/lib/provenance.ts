@@ -17,7 +17,7 @@
 // scale and $/iter — was retired 2026-07-10 with the checkpoint-replay
 // demo: /demo now shows only true recorded state.)
 
-export type ProvenanceMode = "measured" | "extrapolated";
+export type ProvenanceMode = "measured" | "mixed" | "extrapolated";
 
 export interface Provenance {
   mode: ProvenanceMode;
@@ -31,7 +31,19 @@ export function resolveProvenance(
   demo: boolean,
   hasActuals: boolean,
   costPerIter?: number,
+  /** Partial-coverage actuals (some runs carry measured dollars, some
+   *  don't — see receipt.ts spendBreakdown). The badge names the split;
+   *  a partially-measured number must wear neither a pure MEASURED nor
+   *  a pure EXTRAPOLATED badge. */
+  mixed?: { measuredRuns: number; totalRuns: number },
 ): Provenance {
+  if (mixed) {
+    return {
+      mode: "mixed",
+      badge: `MIXED · ${mixed.measuredRuns.toLocaleString()} OF ${mixed.totalRuns.toLocaleString()} RUNS MEASURED`,
+      showNotExtrapolation: false,
+    };
+  }
   if (hasActuals) {
     return {
       mode: "measured",

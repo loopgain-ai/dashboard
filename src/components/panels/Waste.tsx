@@ -14,7 +14,7 @@ import { fmtUSD, fmtInt, fmtPct } from "../../lib/format";
 import { useAuth, useProvenance, useWindowSuffix } from "../../lib/api";
 import { TeamGateCard } from "../auth/UpgradeTeamModal";
 import { allocateByShare, scaleFactorToTotal, workloadClass } from "../../lib/stats";
-import { leadWithPct, spendEliminatedPct } from "../../lib/receipt";
+import { leadWithPct, spendBreakdown, spendEliminatedPct } from "../../lib/receipt";
 import { BENCH_OVERRUN, FIXED_CAP_BASELINE, iterationWasteFleet } from "../../lib/iteration-waste";
 import type { LoopEvent, StatsResponse } from "../../types";
 
@@ -136,37 +136,41 @@ function WasteBody({
   const saved = hasActualSavings
     ? (totals.total_actual_dollars_saved as number)
     : totals.total_savings * costPerIter;
-  // actualSpend prefers measured data when the receiver exposes it
-  // (receiver v0.3.2+, currently populated by the bench tenant via
-  // paired cost_usd.LG per trial). Falls back to iter-count × $/iter
-  // extrapolation when measured spend is unavailable. Same shape as
-  // hasActualSavings above — this replaces a 2026-05-25 bench-tenant
-  // string-match hack with a flag driven by data the receiver carries.
-  const hasActualSpend =
-    typeof totals.total_actual_dollars_spent === "number" &&
-    Number.isFinite(totals.total_actual_dollars_spent);
-  const actualSpend = hasActualSpend
-    ? (totals.total_actual_dollars_spent as number)
-    : totals.total_iterations * costPerIter;
+  // Spend is coverage-aware (receipt.ts spendBreakdown): measured dollars
+  // wherever the sender passed actual_dollars_spent, $/iter extrapolation
+  // ONLY for the uncovered remainder, split disclosed. A partial measured
+  // sum must never be presented as fleet-wide spend (seen live 2026-07-12:
+  // $13.80 from 6 of 1,882 runs).
+  const sb = spendBreakdown(
+    {
+      event_count: totals.event_count,
+      total_iterations: totals.total_iterations,
+      total_actual_dollars_spent: totals.total_actual_dollars_spent,
+      event_count_with_actual_spend: totals.event_count_with_actual_spend,
+      total_iterations_with_actual_spend: totals.total_iterations_with_actual_spend,
+    },
+    costPerIter,
+  );
+  const actualSpend = sb.spend;
+  const hasActualSpend = sb.mode !== "extrapolated";
   // Counterfactual = what the user would have spent with no LoopGain in
-  // the loop. Three flavors of "would have spent" exist:
-  //   - measured + measured (paired-baseline tenants with cost data on
-  //     every event): saved $ is the paired delta, actual spend is the
-  //     real LG cost; counterfactual is their sum. Cents-precision.
-  //   - measured + extrapolated (paired savings, no per-event spend):
-  //     saved is real, spend is iter × $/iter, counterfactual = sum.
-  //   - pure extrapolation (no paired baseline): treat every avoided
-  //     iteration as if it would have run at $/iter — counterfactual
-  //     = (used + avoided) × $/iter.
-  const counterfactual = hasActualSavings
-    ? saved + actualSpend
-    : (totals.total_iterations + totals.total_savings) * costPerIter;
+  // the loop = saved + actual spend, uniformly across regimes. For pure
+  // extrapolation this reduces to the old (used + avoided) × $/iter; for
+  // paired-baseline tenants it's the measured sum; for mixed-coverage
+  // tenants it's the coverage-aware hybrid.
+  const counterfactual = saved + actualSpend;
 
   // Provenance for the three hero dollars. In demo mode every one of them
   // is a projection (measured bench × the visitor's scale + $/iter), so
   // the measured badge must not render there — see useProvenance.
   const savedProv = useProvenance(hasActualSavings, costPerIter);
-  const spendProv = useProvenance(hasActualSpend, costPerIter);
+  const spendProv = useProvenance(
+    sb.mode === "measured",
+    costPerIter,
+    sb.mode === "mixed"
+      ? { measuredRuns: sb.measuredRuns, totalRuns: sb.totalRuns }
+      : undefined,
+  );
 
   // Small measured fleets lead with the eliminated-% — "$25.11" undersells
   // a 92.8% cost cut. Only when BOTH sides of the ratio are measured
@@ -578,6 +582,8 @@ function WasteBody({
             <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>
               {spendProv.mode === "measured"
                 ? `${fmtInt(totals.total_iterations)} iterations · real per-trial cost`
+                : spendProv.mode === "mixed"
+                ? `${fmtUSD(sb.measuredDollars, { cents: true })} measured on ${fmtInt(sb.measuredRuns)} of ${fmtInt(sb.totalRuns)} runs · ${fmtInt(sb.uncoveredIterations)} uncovered iterations × $${costPerIter.toFixed(2)}`
                 : `${fmtInt(totals.total_iterations)} iterations × $${costPerIter.toFixed(2)} per iter`}
             </div>
           </div>
@@ -601,7 +607,8 @@ function WasteBody({
             <span style={{ color: "var(--text-1)" }}>{fmtPct(BENCH_OVERRUN.degradedFraction)}</span>{" "}
             of the time it ships an answer <em>measurably worse</em> than the best it already had
             (median <span style={{ color: "var(--text-1)" }}>{BENCH_OVERRUN.degradedMedianX}×</span>{" "}
-            the error); the rest plateau. LoopGain rolls back to the best.
+            the error); the rest plateau — both rates measured on the 2,000-run LoopGain
+            benchmark, not on this tenant&apos;s loops. LoopGain rolls back to the best.
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", padding: 16, gap: 0 }}>
             {[

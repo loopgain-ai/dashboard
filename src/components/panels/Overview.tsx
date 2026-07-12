@@ -15,7 +15,7 @@ import { Loaded } from "./PanelState";
 import { loopRouteId } from "../shell/routes";
 import type { RouteId, TimeRange } from "../shell";
 import { useAuth, useProvenance, useWindowSuffix, type LoadState } from "../../lib/api";
-import { leadWithPct, spendEliminatedPct } from "../../lib/receipt";
+import { leadWithPct, spendBreakdown, spendEliminatedPct } from "../../lib/receipt";
 import { useDemoReplay, type ReplayLatest } from "../../lib/demo-replay";
 import { matchesFilters, savingsAccrual } from "../../lib/replay-core";
 import { useFilters } from "../../lib/filters";
@@ -202,16 +202,26 @@ function OverviewBody({
   // Demo mode = projection; the measured badge must not imply otherwise.
   const savedProv = useProvenance(hasActualSavings, costPerIter);
   // Small measured fleets lead with the eliminated-% (see lib/receipt.ts;
-  // pinned by dash.small_fleet_pct). Needs measured spend for the ratio.
-  const hasActualSpendOv =
-    typeof totals.total_actual_dollars_spent === "number" &&
-    Number.isFinite(totals.total_actual_dollars_spent);
+  // pinned by dash.small_fleet_pct). The ratio needs FULLY-measured spend
+  // — a partial-coverage sum (some runs without actual_dollars_spent)
+  // can't anchor a "% of spend eliminated" claim (spendBreakdown mode
+  // must be "measured", not "mixed").
+  const spendSb = spendBreakdown(
+    {
+      event_count: totals.event_count,
+      total_iterations: totals.total_iterations,
+      total_actual_dollars_spent: totals.total_actual_dollars_spent,
+      event_count_with_actual_spend: totals.event_count_with_actual_spend,
+      total_iterations_with_actual_spend: totals.total_iterations_with_actual_spend,
+    },
+    costPerIter,
+  );
   const pctFirstOv =
-    savedProv.mode === "measured" && hasActualSpendOv
+    savedProv.mode === "measured" && spendSb.mode === "measured"
       ? leadWithPct(true, savedDollars)
       : false;
   const eliminatedPctOv = pctFirstOv
-    ? spendEliminatedPct(savedDollars, totals.total_actual_dollars_spent as number)
+    ? spendEliminatedPct(savedDollars, spendSb.spend)
     : null;
 
   // Fleet pulse: bucket events by time. Two modes.

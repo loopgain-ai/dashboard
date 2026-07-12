@@ -80,14 +80,30 @@ export function useStats(
   const { demo, bench } = useAuth();
   const replay = useDemoReplay();
   const { filters } = useFilters();
+  // Live + bench: send the FilterBar's classification filters to the
+  // server so /v1/stats-derived numbers (gauge, heroes, KPIs) move with
+  // the filter bar exactly like the /v1/events-derived charts — matching
+  // the demo path, which recomputes stats over the FILTERED prefix.
+  // `unfiltered` consumers (FilterBar option lists, palette) opt out.
+  // Demo keeps an unfiltered base fetch: statsFromEvents applies filters
+  // client-side and double-filtering would skew nothing it recomputes but
+  // starve fields it passes through.
+  const filterParams = opts.unfiltered ? {} : filters;
   const { state, refresh } = useApi<StatsResponse>(
     demo || bench
       ? null
-      : (c, signal) => getStats(c, { includeCalibration: opts.includeCalibration }, signal),
-    [opts.includeCalibration ?? false],
+      : (c, signal) =>
+          getStats(c, { includeCalibration: opts.includeCalibration, ...filterParams }, signal),
+    [
+      opts.includeCalibration ?? false,
+      opts.unfiltered ? "" : `${filters.framework}|${filters.loop_type}|${filters.team}|${filters.workload_id}`,
+    ],
     {
       ...opts,
-      benchLoader: bench || demo ? (signal) => getStatsBench(signal) : undefined,
+      benchLoader:
+        bench || demo
+          ? (signal) => getStatsBench(demo || opts.unfiltered ? {} : filters, signal)
+          : undefined,
     },
   );
   // Demo: recompute the aggregates over the replay's visible prefix of

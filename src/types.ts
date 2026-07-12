@@ -60,6 +60,12 @@ export interface StatsResponse {
     total_actual_dollars_spent?: number | null;
     /** Count of events with actual_dollars_spent populated. */
     event_count_with_actual_spend?: number;
+    /** Σ iterations_used over events that carry actual_dollars_spent —
+     *  the measured-coverage denominator piece. Lets the Waste panel
+     *  extrapolate ONLY the uncovered iterations at $/iter instead of
+     *  presenting a partial measured sum as fleet-wide spend. Receiver
+     *  2026-07-12+. */
+    total_iterations_with_actual_spend?: number;
     /** Iteration-waste aggregates (receiver v3.5+, schema migration 0008).
      *  best_index is the 0-based lowest-error iteration. These drive the
      *  Convergence/Waste "no static cap works" panels; loopgain-verify

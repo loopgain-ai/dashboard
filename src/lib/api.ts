@@ -205,8 +205,20 @@ async function publicGet<T>(
   return (await resp.json()) as T;
 }
 
-export function getStatsBench(signal?: AbortSignal): Promise<StatsResponse> {
-  return publicGet<StatsResponse>("/stats", undefined, signal);
+export function getStatsBench(
+  opts: FilterSet = {},
+  signal?: AbortSignal,
+): Promise<StatsResponse> {
+  return publicGet<StatsResponse>(
+    "/stats",
+    {
+      framework: opts.framework,
+      loop_type: opts.loop_type,
+      team: opts.team,
+      workload_id: opts.workload_id,
+    },
+    signal,
+  );
 }
 
 export function getProfilesBench(
@@ -272,14 +284,20 @@ export function getHealth(endpoint: string, signal?: AbortSignal): Promise<Healt
 
 export function getStats(
   c: Config,
-  opts: { includeCalibration?: boolean } = {},
+  opts: { includeCalibration?: boolean } & FilterSet = {},
   signal?: AbortSignal,
 ): Promise<StatsResponse> {
   return apiGet<StatsResponse>(
     c.endpoint,
     c.token,
     "/v1/stats",
-    opts.includeCalibration ? { include_calibration: "true" } : undefined,
+    {
+      include_calibration: opts.includeCalibration ? "true" : undefined,
+      framework: opts.framework,
+      loop_type: opts.loop_type,
+      team: opts.team,
+      workload_id: opts.workload_id,
+    },
     signal,
   );
 }
@@ -479,9 +497,13 @@ export {
  *  measured value. Demo mode's numbers are the recorded bench run's own
  *  measured dollars (checkpoint replay — never scaled or re-costed), so
  *  they're measured too; the badge names the recorded-bench source. */
-export function useProvenance(hasActuals: boolean, costPerIter?: number): Provenance {
+export function useProvenance(
+  hasActuals: boolean,
+  costPerIter?: number,
+  mixed?: { measuredRuns: number; totalRuns: number },
+): Provenance {
   const { demo } = useAuth();
-  return resolveProvenance(demo, hasActuals, costPerIter);
+  return resolveProvenance(demo, hasActuals, costPerIter, mixed);
 }
 
 // ── Generic data hook ─────────────────────────────────────────────────
