@@ -12,6 +12,7 @@ import { DemoReplayContext, useDemoReplayProvider } from "./lib/demo-replay";
 import { useStats } from "./lib/data-hooks";
 import { ConnectDialog } from "./components/auth/ConnectDialog";
 import { LoginPage, SignupPage } from "./components/auth/AccountPages";
+import { VesperConnectPage } from "./components/auth/VesperConnectPage";
 import { MethodologyModal } from "./components/auth/MethodologyModal";
 import {
   BottomNav,
@@ -71,6 +72,7 @@ export function App() {
     const p = window.location.pathname;
     if (p.startsWith("/signup")) return <SignupPage />;
     if (p.startsWith("/login")) return <LoginPage />;
+    if (p.startsWith("/connect/vesper")) return <VesperConnectPage />;
   }
   return <AppProviders />;
 }

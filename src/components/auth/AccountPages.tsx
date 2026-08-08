@@ -13,6 +13,7 @@
 
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { saveConfig } from "../../lib/api";
+import { resumePendingVesperConnection } from "./VesperConnectPage";
 
 const AUTH_BASE = "https://loopgain.ai/api/auth";
 // Public Turnstile site key (same widget the landing forms use).
@@ -405,7 +406,7 @@ function LoginForm() {
     if (res.config) {
       // The whole point: the dashboard configures itself from the account.
       saveConfig({ endpoint: res.config.endpoint, token: res.config.token });
-      window.location.assign("/");
+      if (!resumePendingVesperConnection()) window.location.assign("/");
     } else {
       setError(
         "Logged in, but no dashboard token is attached to this account yet — check your verification email, or contact hello@loopgain.ai.",
