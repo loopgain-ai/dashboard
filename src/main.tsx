@@ -18,7 +18,8 @@ if (typeof window !== "undefined") {
     p.startsWith("/benchmark") ||
     // Account pages — the front door for every "get a token" CTA.
     p.startsWith("/signup") ||
-    p.startsWith("/login");
+    p.startsWith("/login") ||
+    p.startsWith("/connect/vesper");
   // ?connect=1 is the "Exit demo → connect your own tenant" path: the
   // visitor deliberately left /demo for the onboarding screen, so don't
   // bounce them straight back (App auto-opens the ConnectDialog).
