@@ -84,19 +84,24 @@ async function connectVesper(): Promise<void> {
   }
 
   saveConfig(config);
-  const response = await fetch(pending.callback, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ state: pending.state, endpoint: config.endpoint, token: config.token }),
-    cache: "no-store",
-    credentials: "omit",
-  });
-  if (!response.ok) {
-    const detail = await response.json().catch(() => ({})) as { error?: string };
-    throw new Error(detail.error || `Local Vesper rejected the connection (${response.status})`);
+  // Chromium's Private Network Access policy blocks an HTTPS page from
+  // fetching a loopback HTTP API. A top-level form POST is the browser-safe
+  // handoff: the credential stays in the request body, Vesper verifies and
+  // stores it, then answers with a 303 back to this configured dashboard.
+  const form = document.createElement("form");
+  form.method = "post";
+  form.action = pending.callback;
+  form.style.display = "none";
+  for (const [name, value] of Object.entries({ state: pending.state, endpoint: config.endpoint, token: config.token })) {
+    const field = document.createElement("input");
+    field.type = "hidden";
+    field.name = name;
+    field.value = value;
+    form.appendChild(field);
   }
+  document.body.appendChild(form);
   sessionStorage.removeItem(PENDING_KEY);
-  window.location.replace("/");
+  form.submit();
 }
 
 async function configFromAccount(): Promise<Config | null> {
