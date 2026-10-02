@@ -10,7 +10,7 @@
 //                         rendering a dead screen.
 //
 // Copy is per-feature so the pitch names what the user actually reached
-// for. Pricing: $199/mo per workspace (landing #pricing is canonical).
+// for. Team is coming soon; direct interest to the same contact as landing #pricing.
 
 import { useEffect, useRef } from "react";
 
@@ -36,21 +36,18 @@ const FEATURE_COPY: Record<
   },
 };
 
-function PriceLine() {
+function TeamInterestLine() {
   return (
     <>
-      Team is <span style={{ color: "var(--text-1)" }}>$199/mo per workspace</span> and
-      covers your whole team&apos;s loops.
+      Team is coming soon. Contact us to discuss your team&apos;s needs.
     </>
   );
 }
 
-function UpgradeButton() {
+function ContactTeamButton() {
   return (
     <a
-      href="https://loopgain.ai/#pricing"
-      target="_blank"
-      rel="noreferrer"
+      href="mailto:hello@loopgain.ai?subject=LoopGain%20Team%20interest"
       style={{
         background: "var(--accent)",
         color: "var(--bg-0)",
@@ -63,7 +60,7 @@ function UpgradeButton() {
         textDecoration: "none",
       }}
     >
-      Upgrade to Team
+      Contact us about Team →
     </a>
   );
 }
@@ -83,7 +80,7 @@ function TeamChip() {
         marginBottom: 10,
       }}
     >
-      TEAM FEATURE
+      TEAM · COMING SOON
     </div>
   );
 }
@@ -132,7 +129,7 @@ export function UpgradeTeamModal({
         <TeamChip />
         <h2 style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 600 }}>{copy.title}</h2>
         <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.6, color: "var(--text-2)" }}>
-          {copy.body} <PriceLine />
+          {copy.body} <TeamInterestLine />
         </p>
         {feature === "alerts" && (
           <p style={{ margin: "10px 0 0", fontSize: 11.5, lineHeight: 1.5, color: "var(--text-3)" }}>
@@ -164,7 +161,7 @@ export function UpgradeTeamModal({
         >
           Not now
         </button>
-        <UpgradeButton />
+        <ContactTeamButton />
       </div>
     </dialog>
   );
@@ -188,7 +185,7 @@ export function TeamGateCard({ feature }: { feature: TeamFeature }) {
       <TeamChip />
       <h2 style={{ margin: "0 0 8px", fontSize: 17, fontWeight: 600 }}>{copy.title}</h2>
       <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.6, color: "var(--text-2)" }}>
-        {copy.body} <PriceLine />
+        {copy.body} <TeamInterestLine />
       </p>
       <p style={{ margin: "10px 0 0", fontSize: 11.5, lineHeight: 1.5, color: "var(--text-3)" }}>
         Want to see it in action first? The{" "}
@@ -198,7 +195,7 @@ export function TeamGateCard({ feature }: { feature: TeamFeature }) {
         includes every Team-tier feature, replaying the recorded public benchmark.
       </p>
       <div style={{ marginTop: 18, display: "flex", gap: 8 }}>
-        <UpgradeButton />
+        <ContactTeamButton />
       </div>
     </div>
   );

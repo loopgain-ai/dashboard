@@ -2,8 +2,8 @@
 // the arithmetic (dash.small_fleet_pct).
 //
 // A tenant with 2,000 Haiku-scale runs sees "$25.11 saved" as their
-// 30-day hero — honest, but as a first impression it reads as "not worth
-// $199/mo". The percentage tells the same measurement's real story:
+// 30-day hero — honest, but the absolute number alone obscures the share
+// of spend eliminated. The percentage puts that same measurement in context:
 // LoopGain eliminated 92.8% of what those loops would have spent. Lead
 // with the %, keep the measured $ as the supporting line, ONLY when both
 // sides of the ratio are measured (paired baseline) — a percentage built
